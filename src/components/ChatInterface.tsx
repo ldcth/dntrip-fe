@@ -3,42 +3,140 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
 
-interface Location {
-  // Define Location properties if not already defined elsewhere
+// --- Flight Data Structures (Updated to align with potential JSON keys) ---
+interface FlightData {
+  id: string; // Corresponds to flight_id
+  departure: string; // Corresponds to departure_time
+  arrival: string; // Corresponds to arrival_time
+  duration: string; // Corresponds to flight_time
+  price: string; // Corresponds to price
+  date?: string; // Optional new field
+  departure_airport?: string; // Optional new field
+  arrival_airport?: string; // Optional new field
+}
+
+// --- Added: Interface for raw flight data from API ---
+interface RawFlightDataFromAPI {
+  flight_id?: string;
+  departure_time?: string;
+  arrival_time?: string;
+  flight_time?: string;
+  price?: string;
+  date?: string;
+  departure_airport?: string;
+  arrival_airport?: string;
+  // Add other potential fields if necessary
+}
+
+// --- Plan Data Structures (Removed) ---
+// interface PlanActivity { ... }
+// interface PlanDay { ... }
+// interface PlanAccommodation { ... }
+// interface StructuredPlan { ... }
+
+// --- Helper function to parse flight text (REMOVED) ---
+// const parseFlightText = (...) => { ... };
+
+// --- Helper function to parse plan text (Removed) ---
+// const parsePlanText = (text: string): StructuredPlan | null => { ... };
+
+// --- Flight Table Component (Existing - maybe update later?) ---
+interface FlightTableProps {
+  flights: FlightData[];
+}
+const FlightTable: FC<FlightTableProps> = ({ flights }) => {
+  if (!flights || flights.length === 0) {
+    return <p>No flight data available to display.</p>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Flight ID
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Departure
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Arrival
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Duration
+            </th>
+            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Price
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {flights.map((flight, index) => (
+            <tr key={index}>
+              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                {flight.id}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                {flight.departure}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                {flight.arrival}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                {flight.duration}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
+                {flight.price}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// --- Plan Display Components (Removed) ---
+// const AccommodationInfo: FC<{ info: PlanAccommodation }> = ({ info }) => { ... };
+// const ActivityItem: FC<{ item: PlanActivity }> = ({ item }) => { ... };
+// const DayCard: FC<{ dayData: PlanDay }> = ({ dayData }) => { ... };
+// const PlanDisplay: FC<{ plan: StructuredPlan }> = ({ plan }) => { ... };
+
+// --- Location Interface (Existing) ---
+export interface Location {
   latitude: number;
   longitude: number;
   name?: string;
 }
 
+// --- ChatInterfaceProps Interface (Existing) ---
 interface ChatInterfaceProps {
   onShowMap: (locations: Location[]) => void;
   isLoggedIn: boolean;
+  threadId: string;
 }
 
+// --- Message Interface (No changes needed here) ---
 interface Message {
   role: "user" | "assistant";
-  content: string;
+  content: string; // Will hold placeholder text for flight responses
+  parsedFlights?: FlightData[] | null; // Will hold the structured array
 }
 
-const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
+// --- ChatInterface Component (Updated handleSend) ---
+const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const streamingMessageRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-
   const scrollToBottom = () => {
-    // Use smooth scrolling for better UX
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
-  // Effect to scroll down when new messages are added
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // Effect for cleaning up streaming timeout on unmount
   useEffect(() => {
     return () => {
       if (streamingMessageRef.current) {
@@ -50,16 +148,13 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
   const handleSend = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
-
     const newMessages: Message[] = [
       ...messages,
       { role: "user" as const, content: trimmedInput },
     ];
     setMessages(newMessages);
     setInput("");
-    setIsLoading(true); // Show loading indicator initially
-
-    // --- Clear previous streaming timeout if any ---
+    setIsLoading(true);
     if (streamingMessageRef.current) {
       clearTimeout(streamingMessageRef.current);
     }
@@ -67,51 +162,92 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
     try {
       const response = await ModelApi.getAnswerByUser({
         question: trimmedInput,
+        thread_id: threadId,
       });
-      const fullResponseContent = response.data.response;
+      const intent = response.data.intent;
+      const responseData = response.data.response; // This can be string or array now
+
+      let parsedFlightsData: FlightData[] | null = null;
+      let textResponseContent: string = ""; // Content for streaming
+
+      // --- Check intent and if response is an array for flights ---
+      if (
+        typeof intent === "string" &&
+        intent.toLowerCase().includes("flight") &&
+        Array.isArray(responseData)
+      ) {
+        // Map the JSON array, using the defined RawFlightDataFromAPI type
+        parsedFlightsData = responseData
+          .map((flight: RawFlightDataFromAPI) => {
+            let cleanId = flight.flight_id || "N/A";
+            const operatorIndex = cleanId.indexOf(" · Operated by");
+            if (operatorIndex !== -1) {
+              cleanId = cleanId.substring(0, operatorIndex).trim();
+            }
+
+            return {
+              id: cleanId,
+              departure: flight.departure_time || "N/A",
+              arrival: flight.arrival_time || "N/A",
+              duration: flight.flight_time || "N/A",
+              price: flight.price || "N/A",
+              date: flight.date,
+              departure_airport: flight.departure_airport,
+              arrival_airport: flight.arrival_airport,
+            };
+          })
+          .filter((flight) => flight.id !== "N/A"); // Filter out any potential failures
+
+        // Use a generic text response for streaming, as data is structured
+        textResponseContent = "Okay, I found these flights:";
+      } else if (typeof responseData === "string") {
+        // Handle standard text responses
+        textResponseContent = responseData;
+      } else {
+        // Unexpected response format
+        console.error("Unexpected API response format:", response.data);
+        textResponseContent = "Sorry, I received an unexpected response.";
+      }
 
       const finalMessages = [
         ...newMessages,
-        { role: "assistant" as const, content: "" }, // Add placeholder
+        {
+          role: "assistant" as const,
+          content: "", // Start content empty for streaming
+          parsedFlights: parsedFlightsData, // Store the structured data (or null)
+        },
       ];
       setMessages(finalMessages);
-
-      // --- Hide loading indicator *before* starting stream ---
       setIsLoading(false);
 
+      // Stream the textResponseContent (placeholder or actual text)
       let currentContent = "";
-      const words = fullResponseContent.split(/(\s+)/);
+      const words = textResponseContent.split(/(\s+)/);
       let wordIndex = 0;
-
       const streamNextWord = () => {
         if (wordIndex < words.length) {
           currentContent += words[wordIndex];
           setMessages((prevMessages) => {
             const updatedMessages = [...prevMessages];
-            updatedMessages[updatedMessages.length - 1] = {
-              ...updatedMessages[updatedMessages.length - 1],
-              content: currentContent,
-            };
+            const lastMessage = updatedMessages[updatedMessages.length - 1];
+            if (lastMessage) {
+              updatedMessages[updatedMessages.length - 1] = {
+                ...lastMessage,
+                content: currentContent,
+              };
+            }
             return updatedMessages;
           });
           wordIndex++;
-          // --- Scroll after each word update during streaming ---
-          // We trigger scrollToBottom via the useEffect[messages] dependency,
-          // but an explicit call might be needed if useEffect timing isn't perfect.
-          // Let's rely on useEffect first, add explicit call if needed.
-          // scrollToBottom();
-
           streamingMessageRef.current = setTimeout(streamNextWord, 30);
         } else {
-          // Streaming finished, ensure final scroll
           scrollToBottom();
+          // Show map locations if any (even with flight table)
           if (response.data.locations && response.data.locations.length > 0) {
             onShowMap(response.data.locations);
           }
         }
       };
-
-      // Start the streaming
       streamNextWord();
     } catch (error) {
       console.error("Error:", error);
@@ -119,12 +255,8 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
         clearTimeout(streamingMessageRef.current);
       }
       setMessages((prev) => [
-        ...prev.slice(0, -1), // Remove placeholder message on error
-        {
-          role: "assistant" as const,
-          content:
-            "Sorry, there was an error processing your request. Please try again.",
-        },
+        ...prev.slice(0, -1),
+        { role: "assistant" as const, content: "Sorry... Please try again." },
       ]);
       setIsLoading(false);
     }
@@ -149,10 +281,7 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
               <h2 className="text-2xl font-semibold mb-4 text-gray-700">
                 Travel Assistant
               </h2>
-              <p className="text-gray-600">
-                Ask me anything about travel destinations, itineraries, or
-                recommendations!
-              </p>
+              <p className="text-gray-600">Ask me anything...</p>
             </div>
           </div>
         ) : (
@@ -172,9 +301,12 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
                   }`}
                 >
                   {message.role === "user" ? (
-                    message.content // User message as plain text
+                    message.content
+                  ) : message.parsedFlights ? (
+                    // Render FlightTable if parsedFlights data exists
+                    <FlightTable flights={message.parsedFlights} />
                   ) : (
-                    // Assistant message rendered with Markdown
+                    // Otherwise, render the streamed content (placeholder or actual response)
                     <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-strong:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {message.content}
@@ -184,7 +316,6 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
                 </div>
               </div>
             ))}
-            {/* Thinking indicator display logic */}
             {isLoading && (
               <div className="flex justify-start">
                 <div className="max-w-[70%] rounded-xl px-4 py-3 bg-white text-gray-500 shadow-md">
@@ -192,12 +323,10 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
                 </div>
               </div>
             )}
-            {/* Invisible div to target for scrolling */}
             <div ref={messagesEndRef} style={{ height: "1px" }} />
           </>
         )}
       </div>
-      {/* Input area */}
       <div className="p-4 border-t border-gray-200 bg-gray-100">
         <div className="flex gap-3 items-center">
           <input
@@ -207,12 +336,12 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap }) => {
             onKeyDown={handleKeyDown}
             placeholder="Ask about travel..."
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-gray-800 transition duration-150 ease-in-out disabled:bg-gray-200"
-            disabled={isLoading} // Disable input while processing OR streaming (technically isLoading is false during streaming, but we might want to disable until full response? Let's keep it disabled only when strictly loading)
+            disabled={isLoading}
           />
           <button
             onClick={handleSend}
-            className="bg-blue-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out"
-            disabled={isLoading || !input.trim()} // Disable if loading OR input is empty
+            className="bg-blue-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out cursor-pointer"
+            disabled={isLoading || !input.trim()}
           >
             Send
           </button>

@@ -1,9 +1,10 @@
-import { IConversation } from "@/types";
+// import { IConversation } from "@/types";
 
 import instance from "./axios";
 
 type Question = {
   question: string;
+  thread_id?: string;
 };
 
 const getAnswerByUser = (data: Question) => {
