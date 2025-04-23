@@ -3,6 +3,16 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
 
+// --- Location Interface (Matching MapView's expectation for mock data) ---
+// Note: This might differ from the Location type returned by your actual API
+// Export this type so Home can import it
+export interface MockLocation {
+  name: string;
+  lat: number;
+  lng: number;
+  description: string;
+}
+
 // --- Flight Data Structures (Updated to align with potential JSON keys) ---
 interface FlightData {
   id: string; // Corresponds to flight_id
@@ -111,7 +121,7 @@ export interface Location {
 
 // --- ChatInterfaceProps Interface (Existing) ---
 interface ChatInterfaceProps {
-  onShowMap: (locations: Location[]) => void;
+  onShowMap: (locations: MockLocation[]) => void;
   isLoggedIn: boolean;
   threadId: string;
 }
@@ -137,6 +147,14 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Effect to clear messages when threadId changes
+  useEffect(() => {
+    setMessages([]); // Clear messages when threadId changes
+    setInput(""); // Clear input field as well
+    console.log("ChatInterface: threadId changed, clearing messages.");
+  }, [threadId]); // Dependency array includes threadId
+
   useEffect(() => {
     return () => {
       if (streamingMessageRef.current) {
@@ -144,6 +162,39 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
       }
     };
   }, []);
+
+  // --- Mock Location Data for Testing ---
+  const mockLocations: MockLocation[] = [
+    {
+      name: "Mock Location A (NYC)",
+      lat: 40.7128,
+      lng: -74.006,
+      description: "New York City",
+    },
+    {
+      name: "Mock Location B (LA)",
+      lat: 34.0522,
+      lng: -118.2437,
+      description: "Los Angeles",
+    },
+    {
+      name: "Mock Location C (London)",
+      lat: 51.5074,
+      lng: -0.1278,
+      description: "London",
+    },
+  ];
+
+  // --- Functions to Trigger Map with Mock Data ---
+  const showMockMap = () => {
+    console.log("TEST: Showing map with MOCK data");
+    onShowMap(mockLocations); // Call the prop passed from parent
+  };
+
+  const hideMap = () => {
+    console.log("TEST: Hiding map");
+    onShowMap([]); // Call the prop with empty array to hide/clear
+  };
 
   const handleSend = async () => {
     const trimmedInput = input.trim();
@@ -244,7 +295,7 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
           scrollToBottom();
           // Show map locations if any (even with flight table)
           if (response.data.locations && response.data.locations.length > 0) {
-            onShowMap(response.data.locations);
+            onShowMap(response.data.locations as MockLocation[]);
           }
         }
       };
@@ -328,6 +379,20 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
         )}
       </div>
       <div className="p-4 border-t border-gray-200 bg-gray-100">
+        <div className="mb-2 flex justify-center gap-3">
+          <button
+            onClick={showMockMap}
+            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs"
+          >
+            Show Mock Map
+          </button>
+          <button
+            onClick={hideMap}
+            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs"
+          >
+            Hide Map
+          </button>
+        </div>
         <div className="flex gap-3 items-center">
           <input
             type="text"
