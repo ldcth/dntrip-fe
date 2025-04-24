@@ -1,7 +1,9 @@
-import { FC, useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
+import PlanDisplay, { StructuredPlan } from "./PlanDisplay";
+import FlightTable, { FlightData } from "./FlightTable";
 
 // --- Location Interface (Matching MapView's expectation for mock data) ---
 // Note: This might differ from the Location type returned by your actual API
@@ -13,19 +15,7 @@ export interface MockLocation {
   description: string;
 }
 
-// --- Flight Data Structures (Updated to align with potential JSON keys) ---
-interface FlightData {
-  id: string; // Corresponds to flight_id
-  departure: string; // Corresponds to departure_time
-  arrival: string; // Corresponds to arrival_time
-  duration: string; // Corresponds to flight_time
-  price: string; // Corresponds to price
-  date?: string; // Optional new field
-  departure_airport?: string; // Optional new field
-  arrival_airport?: string; // Optional new field
-}
-
-// --- Added: Interface for raw flight data from API ---
+// --- Added: Interface for raw flight data from API (Kept here as it's used for mapping) ---
 interface RawFlightDataFromAPI {
   flight_id?: string;
   departure_time?: string;
@@ -37,80 +27,6 @@ interface RawFlightDataFromAPI {
   arrival_airport?: string;
   // Add other potential fields if necessary
 }
-
-// --- Plan Data Structures (Removed) ---
-// interface PlanActivity { ... }
-// interface PlanDay { ... }
-// interface PlanAccommodation { ... }
-// interface StructuredPlan { ... }
-
-// --- Helper function to parse flight text (REMOVED) ---
-// const parseFlightText = (...) => { ... };
-
-// --- Helper function to parse plan text (Removed) ---
-// const parsePlanText = (text: string): StructuredPlan | null => { ... };
-
-// --- Flight Table Component (Existing - maybe update later?) ---
-interface FlightTableProps {
-  flights: FlightData[];
-}
-const FlightTable: FC<FlightTableProps> = ({ flights }) => {
-  if (!flights || flights.length === 0) {
-    return <p>No flight data available to display.</p>;
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200 border border-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Flight ID
-            </th>
-            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Departure
-            </th>
-            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Arrival
-            </th>
-            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Duration
-            </th>
-            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Price
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {flights.map((flight, index) => (
-            <tr key={index}>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
-                {flight.id}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
-                {flight.departure}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
-                {flight.arrival}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
-                {flight.duration}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">
-                {flight.price}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-// --- Plan Display Components (Removed) ---
-// const AccommodationInfo: FC<{ info: PlanAccommodation }> = ({ info }) => { ... };
-// const ActivityItem: FC<{ item: PlanActivity }> = ({ item }) => { ... };
-// const DayCard: FC<{ dayData: PlanDay }> = ({ dayData }) => { ... };
-// const PlanDisplay: FC<{ plan: StructuredPlan }> = ({ plan }) => { ... };
 
 // --- Location Interface (Existing) ---
 export interface Location {
@@ -126,15 +42,16 @@ interface ChatInterfaceProps {
   threadId: string;
 }
 
-// --- Message Interface (No changes needed here) ---
+// --- Message Interface (Updated - FlightData is now imported) ---
 interface Message {
   role: "user" | "assistant";
-  content: string; // Will hold placeholder text for flight responses
-  parsedFlights?: FlightData[] | null; // Will hold the structured array
+  content: string;
+  parsedFlights?: FlightData[] | null; // Uses imported FlightData
+  parsedPlan?: StructuredPlan | null;
 }
 
-// --- ChatInterface Component (Updated handleSend) ---
-const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
+// --- ChatInterface Component (No significant changes needed in logic) ---
+const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -215,19 +132,42 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
         question: trimmedInput,
         thread_id: threadId,
       });
+
+      // Add these logs:
+      console.log("API Response Received:", response.data);
+      console.log(
+        "Intent:",
+        response.data.intent,
+        "(Type:",
+        typeof response.data.intent,
+        ")"
+      );
+      console.log(
+        "Response Data:",
+        response.data.response,
+        "(Type:",
+        typeof response.data.response,
+        ")"
+      );
+      console.log(
+        "Is Response Data an Array?",
+        Array.isArray(response.data.response)
+      );
+
       const intent = response.data.intent;
-      const responseData = response.data.response; // This can be string or array now
+      const responseData = response.data.response;
 
       let parsedFlightsData: FlightData[] | null = null;
-      let textResponseContent: string = ""; // Content for streaming
+      let parsedPlanData: StructuredPlan | null = null;
+      let textResponseContent: string = ""; // Content for streaming/placeholder
 
-      // --- Check intent and if response is an array for flights ---
+      // --- Check intent and response type ---
       if (
         typeof intent === "string" &&
         intent.toLowerCase().includes("flight") &&
         Array.isArray(responseData)
       ) {
-        // Map the JSON array, using the defined RawFlightDataFromAPI type
+        // --- Handle FLIGHT data ---
         parsedFlightsData = responseData
           .map((flight: RawFlightDataFromAPI) => {
             let cleanId = flight.flight_id || "N/A";
@@ -235,7 +175,6 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
             if (operatorIndex !== -1) {
               cleanId = cleanId.substring(0, operatorIndex).trim();
             }
-
             return {
               id: cleanId,
               departure: flight.departure_time || "N/A",
@@ -247,12 +186,24 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
               arrival_airport: flight.arrival_airport,
             };
           })
-          .filter((flight) => flight.id !== "N/A"); // Filter out any potential failures
-
-        // Use a generic text response for streaming, as data is structured
-        textResponseContent = "Okay, I found these flights:";
+          .filter((flight) => flight.id !== "N/A");
+        textResponseContent = "Okay, I found these flights:"; // Placeholder text
+      } else if (
+        // --- Modified Condition: Check object type first, then intent OR structure ---
+        typeof responseData === "object" && // Check if it's an object first
+        responseData !== null &&
+        !Array.isArray(responseData) && // THEN check if intent is 'plan' OR structure matches
+        ((typeof intent === "string" &&
+          intent.toLowerCase().includes("plan")) ||
+          ("hotel" in responseData && "daily_plans" in responseData))
+      ) {
+        // --- Handle PLAN data ---
+        // Assuming responseData directly matches StructuredPlan for now
+        // Add validation/mapping if needed based on actual API response
+        parsedPlanData = responseData as StructuredPlan; // Type assertion
+        textResponseContent = "Here is the travel plan I generated:"; // Placeholder text
       } else if (typeof responseData === "string") {
-        // Handle standard text responses
+        // --- Handle standard TEXT responses ---
         textResponseContent = responseData;
       } else {
         // Unexpected response format
@@ -265,7 +216,8 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
         {
           role: "assistant" as const,
           content: "", // Start content empty for streaming
-          parsedFlights: parsedFlightsData, // Store the structured data (or null)
+          parsedFlights: parsedFlightsData,
+          parsedPlan: parsedPlanData, // Store the structured plan data (or null)
         },
       ];
       setMessages(finalMessages);
@@ -305,10 +257,24 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
       if (streamingMessageRef.current) {
         clearTimeout(streamingMessageRef.current);
       }
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        { role: "assistant" as const, content: "Sorry... Please try again." },
-      ]);
+      setMessages((prev) => {
+        const lastMsg = prev[prev.length - 1];
+        // Only remove if the last message was an empty assistant placeholder
+        if (lastMsg && lastMsg.role === "assistant" && lastMsg.content === "") {
+          return [
+            ...prev.slice(0, -1),
+            {
+              role: "assistant" as const,
+              content: "Sorry... Please try again.",
+            },
+          ];
+        }
+        // Otherwise, just append the error message
+        return [
+          ...prev,
+          { role: "assistant" as const, content: "Sorry... Please try again." },
+        ];
+      });
       setIsLoading(false);
     }
   };
@@ -348,19 +314,26 @@ const ChatInterface: FC<ChatInterfaceProps> = ({ onShowMap, threadId }) => {
                   className={`max-w-[75%] rounded-xl px-4 py-3 shadow-md ${
                     message.role === "user"
                       ? "bg-blue-500 text-white"
+                      : message.parsedFlights || message.parsedPlan
+                      ? "bg-white text-gray-800 w-full"
                       : "bg-white text-gray-800"
+                  } ${
+                    message.role === "assistant" &&
+                    (message.parsedFlights || message.parsedPlan)
+                      ? "p-0 overflow-hidden"
+                      : "px-4 py-3"
                   }`}
                 >
                   {message.role === "user" ? (
                     message.content
                   ) : message.parsedFlights ? (
-                    // Render FlightTable if parsedFlights data exists
                     <FlightTable flights={message.parsedFlights} />
+                  ) : message.parsedPlan ? (
+                    <PlanDisplay plan={message.parsedPlan} />
                   ) : (
-                    // Otherwise, render the streamed content (placeholder or actual response)
                     <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-strong:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {message.content}
+                        {message.content || "..."}
                       </ReactMarkdown>
                     </div>
                   )}
