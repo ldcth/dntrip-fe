@@ -5,15 +5,16 @@ export interface IConversation {
   title: string;
   updatedAt: string;
   userId: string;
+  threadId: string;
 }
 
 export interface IContent {
   _id: string;
-  answers: string[];
   conversationId: string;
-  correct_answer: string;
+  threadId: string;
+  content: string;
+  type: "Human" | "AI";
+  intent: string;
   createdAt: string;
-  version: number;
-  type: "ask" | "answer";
   updatedAt: string;
 }

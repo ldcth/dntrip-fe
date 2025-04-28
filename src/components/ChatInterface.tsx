@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
 import PlanDisplay, { StructuredPlan } from "./PlanDisplay";
 import FlightTable, { FlightData } from "./FlightTable";
+// Keep IConversation if used by other parts, remove if truly unused
+// import { IConversation } from "@/types/conversation.types";
+import { IContent } from "@/types/conversation.types";
 
 // --- Location Interface (Matching MapView's expectation for mock data) ---
 // Note: This might differ from the Location type returned by your actual API
@@ -40,6 +43,7 @@ interface ChatInterfaceProps {
   onShowMap: (locations: MockLocation[]) => void;
   isLoggedIn: boolean;
   threadId: string;
+  conversationId: string | null;
 }
 
 // --- Message Interface (Updated - FlightData is now imported) ---
@@ -50,26 +54,208 @@ interface Message {
   parsedPlan?: StructuredPlan | null;
 }
 
-// --- ChatInterface Component (No significant changes needed in logic) ---
-const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
+// Helper function to map IContent to Message - ENHANCED
+const mapContentToMessage = (content: IContent): Message | null => {
+  if (!content) return null;
+
+  // --- Human Message ---
+  if (content.type === "Human") {
+    return { role: "user", content: content.content || "" };
+  }
+  // --- AI Message ---
+  else if (content.type === "AI") {
+    const intent = content.intent?.toLowerCase() || "";
+    const responseData = content.content; // Assuming content stores the actual data (string, object, or array)
+
+    console.log(
+      // Keep log for debugging structure
+      "Mapping AI content:",
+      JSON.stringify({
+        intent: content.intent,
+        type: typeof responseData,
+        isArray: Array.isArray(responseData),
+        responseData,
+      })
+    );
+
+    // Check for Flights
+    if (intent.includes("flight") && Array.isArray(responseData)) {
+      const mappedFlights: FlightData[] = responseData
+        .map((flight: RawFlightDataFromAPI): FlightData | null => {
+          let cleanId = flight.flight_id || "N/A";
+          const operatorIndex = cleanId.indexOf(" · Operated by");
+          if (operatorIndex !== -1) {
+            cleanId = cleanId.substring(0, operatorIndex).trim();
+          }
+          return {
+            id: cleanId,
+            departure: flight.departure_time || "N/A",
+            arrival: flight.arrival_time || "N/A",
+            duration: flight.flight_time || "N/A",
+            price: flight.price || "N/A",
+            date: flight.date,
+            departure_airport: flight.departure_airport,
+            arrival_airport: flight.arrival_airport,
+          };
+        })
+        .filter(
+          (flight): flight is FlightData =>
+            flight !== null && flight.id !== "N/A"
+        );
+
+      return {
+        role: "assistant",
+        parsedFlights: mappedFlights,
+        content: "", // Use empty string or placeholder text
+      };
+    }
+    // Check for Plan
+    else if (
+      (intent.includes("plan") ||
+        (typeof responseData === "object" &&
+          responseData !== null &&
+          "hotel" in responseData)) &&
+      typeof responseData === "object" &&
+      responseData !== null &&
+      !Array.isArray(responseData)
+    ) {
+      // Assume responseData is already StructuredPlan
+      return {
+        role: "assistant",
+        parsedPlan: responseData as StructuredPlan, // Add type assertion
+        content: "", // Use empty string or placeholder text
+      };
+    }
+    // Fallback for standard Text AI message
+    else if (typeof responseData === "string") {
+      return { role: "assistant", content: responseData };
+    }
+    // Handle cases where content might be object/array but not flight/plan
+    else {
+      console.warn(
+        "Mapping AI: Unhandled content structure for intent:",
+        intent,
+        responseData
+      );
+      // Try converting to string as a last resort, or return error message
+      return { role: "assistant", content: "[Unsupported AI message format]" };
+    }
+  }
+
+  console.warn("Unknown content type in mapContentToMessage:", content.type);
+  return null;
+};
+
+// --- ChatInterface Component (Original Logic) ---
+const ChatInterface = ({
+  onShowMap,
+  isLoggedIn,
+  threadId,
+  conversationId,
+}: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [contents, setContents] = useState<IContent[]>([]);
   const streamingMessageRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (behavior: "smooth" | "auto" = "smooth") => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
   useEffect(() => {
-    scrollToBottom();
+    if (!isChatLoading) {
+      scrollToBottom("smooth");
+    }
   }, [messages]);
 
-  // Effect to clear messages when threadId changes
+  useEffect(() => {
+    if (streamingMessageRef.current) {
+      clearTimeout(streamingMessageRef.current);
+      streamingMessageRef.current = null;
+    }
+
+    setMessages([]);
+    setInput("");
+    setIsLoading(false);
+
+    if (conversationId && isLoggedIn) {
+      console.log(
+        `ChatInterface: Fetching content for conversationId: ${conversationId}`
+      );
+      setIsChatLoading(true);
+      ModelApi.getConversationContent(conversationId)
+        .then((response) => {
+          console.log(
+            "ChatInterface: API getConversationContent SUCCESS:",
+            response.data
+          );
+
+          // --- FIX IS HERE ---
+          // Check if response.data itself is the array
+          const fetchedContents: IContent[] = Array.isArray(response.data)
+            ? response.data // Use response.data directly
+            : []; // Fallback to empty array if it's not an array
+
+          // This validation might now be slightly redundant but safe to keep
+          if (!Array.isArray(response.data)) {
+            // Check the original response.data
+            console.error(
+              "ChatInterface: Expected an array of contents, but received:",
+              response.data
+            );
+            setMessages([
+              { role: "assistant", content: "Error: Invalid format." },
+            ]);
+            setIsChatLoading(false); // Stop loading on format error
+            return;
+          }
+          // --- END FIX ---
+
+          // Mapping should work now if fetchedContents is populated correctly
+          const mappedMessages = fetchedContents
+            .map(mapContentToMessage)
+            .filter((msg): msg is Message => msg !== null);
+
+          console.log("ChatInterface: Mapped messages:", mappedMessages);
+          setMessages(mappedMessages);
+          setTimeout(() => scrollToBottom("auto"), 50);
+        })
+        .catch((error) => {
+          console.error(
+            "ChatInterface: API getConversationContent FAILED:",
+            error
+          );
+          setMessages([
+            { role: "assistant", content: "Sorry, couldn't load history." },
+          ]);
+        })
+        .finally(() => {
+          setIsChatLoading(false);
+        });
+    } else {
+      console.log(
+        `ChatInterface: Not fetching content. LoggedIn: ${isLoggedIn}, ConvID: ${conversationId}`
+      );
+      setMessages([]);
+      setIsChatLoading(false);
+    }
+
+    return () => {
+      if (streamingMessageRef.current) {
+        clearTimeout(streamingMessageRef.current);
+      }
+    };
+  }, [conversationId, isLoggedIn]);
+
+  // Original Effect to clear messages when threadId changes (keep this simple behavior for now)
   useEffect(() => {
     setMessages([]); // Clear messages when threadId changes
     setInput(""); // Clear input field as well
-    console.log("ChatInterface: threadId changed, clearing messages.");
+    console.log(
+      "ChatInterface: threadId changed, clearing messages (Original Behavior)."
+    );
   }, [threadId]); // Dependency array includes threadId
 
   useEffect(() => {
@@ -79,6 +265,13 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
       }
     };
   }, []);
+
+  // Original effect related to login status (keep)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setContents([]);
+    }
+  }, [isLoggedIn]);
 
   // --- Mock Location Data for Testing ---
   const mockLocations: MockLocation[] = [
@@ -113,9 +306,10 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
     onShowMap([]); // Call the prop with empty array to hide/clear
   };
 
-  const handleSend = async () => {
+  // --- Original handleSend Logic ---
+  const handleSend = useCallback(async () => {
     const trimmedInput = input.trim();
-    if (!trimmedInput || isLoading) return;
+    if (!trimmedInput || isLoading || isChatLoading) return;
     const newMessages: Message[] = [
       ...messages,
       { role: "user" as const, content: trimmedInput },
@@ -126,33 +320,51 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
     if (streamingMessageRef.current) {
       clearTimeout(streamingMessageRef.current);
     }
-
+    setContents((contents) => [
+      ...contents,
+      {
+        _id: "",
+        conversationId: conversationId || "",
+        threadId: threadId,
+        content: trimmedInput,
+        type: "Human",
+        intent: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
     try {
-      const response = await ModelApi.getAnswerByUser({
+      const apiCall = isLoggedIn
+        ? ModelApi.getAnswerByUser
+        : ModelApi.getAnswerByCustomer;
+
+      const response = await apiCall({
         question: trimmedInput,
-        thread_id: threadId,
+        thread_id: threadId, // Send the frontend threadId
       });
 
-      // Add these logs:
-      console.log("API Response Received:", response.data);
+      const actualConversationId = response.data?.conversationId || "";
+
+      console.log(`ChatInterface: Sent threadId: "${threadId}"`);
       console.log(
-        "Intent:",
-        response.data.intent,
-        "(Type:",
-        typeof response.data.intent,
-        ")"
+        `ChatInterface: Received conversationId: "${actualConversationId}"`
       );
-      console.log(
-        "Response Data:",
-        response.data.response,
-        "(Type:",
-        typeof response.data.response,
-        ")"
-      );
-      console.log(
-        "Is Response Data an Array?",
-        Array.isArray(response.data.response)
-      );
+
+      // Update contents using the response data and ACTUAL conversationId
+      setContents((prevContents) => [
+        ...prevContents,
+        {
+          _id: response.data?.answer_id || "",
+          conversationId: actualConversationId, // Use ID from response
+          threadId: threadId, // Keep the frontend threadId
+          content: response.data.response,
+          type: "AI",
+          intent: response.data.intent,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ]);
+      console.log("API Response Received (Original):", response.data);
 
       const intent = response.data.intent;
       const responseData = response.data.response;
@@ -161,13 +373,12 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
       let parsedPlanData: StructuredPlan | null = null;
       let textResponseContent: string = ""; // Content for streaming/placeholder
 
-      // --- Check intent and response type ---
+      // Original logic for checking intent and response type
       if (
         typeof intent === "string" &&
         intent.toLowerCase().includes("flight") &&
         Array.isArray(responseData)
       ) {
-        // --- Handle FLIGHT data ---
         parsedFlightsData = responseData
           .map((flight: RawFlightDataFromAPI) => {
             let cleanId = flight.flight_id || "N/A";
@@ -189,24 +400,18 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
           .filter((flight) => flight.id !== "N/A");
         textResponseContent = "Okay, I found these flights:"; // Placeholder text
       } else if (
-        // --- Modified Condition: Check object type first, then intent OR structure ---
-        typeof responseData === "object" && // Check if it's an object first
+        typeof responseData === "object" &&
         responseData !== null &&
-        !Array.isArray(responseData) && // THEN check if intent is 'plan' OR structure matches
+        !Array.isArray(responseData) &&
         ((typeof intent === "string" &&
           intent.toLowerCase().includes("plan")) ||
           ("hotel" in responseData && "daily_plans" in responseData))
       ) {
-        // --- Handle PLAN data ---
-        // Assuming responseData directly matches StructuredPlan for now
-        // Add validation/mapping if needed based on actual API response
-        parsedPlanData = responseData as StructuredPlan; // Type assertion
+        parsedPlanData = responseData as StructuredPlan;
         textResponseContent = "Here is the travel plan I generated:"; // Placeholder text
       } else if (typeof responseData === "string") {
-        // --- Handle standard TEXT responses ---
         textResponseContent = responseData;
       } else {
-        // Unexpected response format
         console.error("Unexpected API response format:", response.data);
         textResponseContent = "Sorry, I received an unexpected response.";
       }
@@ -215,15 +420,15 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
         ...newMessages,
         {
           role: "assistant" as const,
-          content: "", // Start content empty for streaming
+          content: "",
           parsedFlights: parsedFlightsData,
-          parsedPlan: parsedPlanData, // Store the structured plan data (or null)
+          parsedPlan: parsedPlanData,
         },
       ];
       setMessages(finalMessages);
       setIsLoading(false);
 
-      // Stream the textResponseContent (placeholder or actual text)
+      // Original streaming logic
       let currentContent = "";
       const words = textResponseContent.split(/(\s+)/);
       let wordIndex = 0;
@@ -245,7 +450,6 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
           streamingMessageRef.current = setTimeout(streamNextWord, 30);
         } else {
           scrollToBottom();
-          // Show map locations if any (even with flight table)
           if (response.data.locations && response.data.locations.length > 0) {
             onShowMap(response.data.locations as MockLocation[]);
           }
@@ -259,7 +463,6 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
       }
       setMessages((prev) => {
         const lastMsg = prev[prev.length - 1];
-        // Only remove if the last message was an empty assistant placeholder
         if (lastMsg && lastMsg.role === "assistant" && lastMsg.content === "") {
           return [
             ...prev.slice(0, -1),
@@ -269,7 +472,6 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
             },
           ];
         }
-        // Otherwise, just append the error message
         return [
           ...prev,
           { role: "assistant" as const, content: "Sorry... Please try again." },
@@ -277,7 +479,15 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
       });
       setIsLoading(false);
     }
-  };
+  }, [
+    isLoggedIn,
+    threadId,
+    conversationId,
+    messages,
+    input,
+    contents,
+    onShowMap,
+  ]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -286,19 +496,28 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
     }
   };
 
+  // Original Render Logic
   return (
     <div className="flex flex-col h-full bg-white shadow-xl rounded-lg overflow-hidden">
       <div
         ref={chatContainerRef}
         className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50"
       >
-        {messages.length === 0 ? (
+        {isChatLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-gray-500">Loading messages...</p>
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center p-6 bg-white rounded-lg shadow">
               <h2 className="text-2xl font-semibold mb-4 text-gray-700">
                 Travel Assistant
               </h2>
-              <p className="text-gray-600">Ask me anything...</p>
+              <p className="text-gray-600">
+                {isLoggedIn
+                  ? "Select a conversation or start a new one."
+                  : "Ask me anything..."}
+              </p>
             </div>
           </div>
         ) : (
@@ -333,14 +552,16 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
                   ) : (
                     <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-strong:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {message.content || "..."}
+                        {index === messages.length - 1 && isLoading
+                          ? "..."
+                          : message.content}
                       </ReactMarkdown>
                     </div>
                   )}
                 </div>
               </div>
             ))}
-            {isLoading && (
+            {isLoading && messages[messages.length - 1]?.role === "user" && (
               <div className="flex justify-start">
                 <div className="max-w-[70%] rounded-xl px-4 py-3 bg-white text-gray-500 shadow-md">
                   Thinking...
@@ -372,16 +593,18 @@ const ChatInterface = ({ onShowMap, threadId }: ChatInterfaceProps) => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about travel..."
+            placeholder={
+              isLoggedIn ? "Send a message..." : "Ask about travel..."
+            }
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-gray-800 transition duration-150 ease-in-out disabled:bg-gray-200"
-            disabled={isLoading}
+            disabled={isLoading || isChatLoading}
           />
           <button
             onClick={handleSend}
             className="bg-blue-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out cursor-pointer"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || isChatLoading || !input.trim()}
           >
-            Send
+            {isLoading ? "Sending..." : isChatLoading ? "Loading..." : "Send"}
           </button>
         </div>
       </div>

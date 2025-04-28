@@ -1,5 +1,5 @@
 import { BASE_URL } from "@/config";
-import axios, { AxiosResponse } from "axios";
+import axios, { AxiosResponse, AxiosError } from "axios";
 
 const baseURL = `${BASE_URL}/api`;
 
@@ -13,21 +13,29 @@ const instance = axios.create({
   },
 });
 
-const handleSuccessResponse = (response: AxiosResponse<any, any>) => {
+const handleSuccessResponse = (response: AxiosResponse) => {
   return response;
 };
 
-const handleErrorResponse = (error: any) => {
+const handleErrorResponse = (error: AxiosError) => {
   try {
     // console.log("here");
-    return Promise.reject(error.response.data);
+    if (error.response && error.response.data) {
+      console.error("API Error Response:", error.response.data);
+      return Promise.reject(error.response.data);
+    } else {
+      console.error("API Error (No Response Data):", error.message);
+      return Promise.reject({ message: error.message || "Network Error" });
+    }
   } catch (e) {
-    return Promise.reject({ message: "Network Error" });
+    console.error("Error handling API error:", e);
+    return Promise.reject({ message: "Network Error or Error Handler Failed" });
   }
 };
 
 export const setHeaderConfigAxios = (token?: string) => {
   if (token) {
+    console.log("axios.ts: Setting Authorization header with token:", token);
     instance.defaults.headers.common["Authorization"] = token
       ? "Bearer " + token
       : "";
