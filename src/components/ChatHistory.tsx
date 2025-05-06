@@ -229,7 +229,7 @@ const ChatHistory: FC<ChatHistoryProps> = ({
             className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer focus:outline-none transition-colors duration-200 ease-in-out"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5" />
-            Log In / Sign Up
+            Log In
           </button>
         ) : null}
       </div>

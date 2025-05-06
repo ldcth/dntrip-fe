@@ -1,10 +1,17 @@
 import React from "react";
+import { useDispatch } from "react-redux";
+import {
+  setSelectedLocation,
+  setRouteRequest,
+} from "@/redux/slices/map.reducer";
+import { AppDispatch } from "@/redux/store/store";
 
 // --- Plan Data Structures ---
 
 interface Hotel {
   name: string;
   coords: [number, number];
+  description?: string;
 }
 
 interface PlannedStops {
@@ -22,6 +29,7 @@ interface RouteStep {
   name: string;
   coords: [number, number];
   distance_from_previous_km: number;
+  description?: string;
 }
 
 interface DailyPlan {
@@ -39,12 +47,51 @@ export interface StructuredPlan {
 
 interface PlanDisplayProps {
   plan: StructuredPlan;
+  showDirectionsMode: boolean; // Added prop
 }
 
-const PlanDisplay = ({ plan }: PlanDisplayProps) => {
-  if (!plan) {
+const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
+  const dispatch = useDispatch<AppDispatch>();
+
+  if (!plan || !plan.daily_plans) {
     return <p>No plan data available to display.</p>;
   }
+
+  // Helper to find coordinates AND index for a stop name on a specific day
+  const findStopDetails = (
+    dayIndex: number,
+    stopName: string
+  ): { coords: { lat: number; lng: number }; routeIndex: number } | null => {
+    const currentDayPlan = plan.daily_plans?.[dayIndex];
+    if (!currentDayPlan || !currentDayPlan.route) return null;
+    const route = currentDayPlan.route;
+    const routeIndex = route.findIndex((step) => step.name === stopName);
+
+    if (routeIndex !== -1) {
+      const routeStep = route[routeIndex];
+      if (routeStep.coords && routeStep.coords.length === 2) {
+        return {
+          coords: { lat: routeStep.coords[0], lng: routeStep.coords[1] },
+          routeIndex,
+        };
+      }
+    }
+    return null;
+  };
+
+  // Helper to get coords from a specific route index
+  const getCoordsFromRouteIndex = (
+    dayIndex: number,
+    routeIndex: number
+  ): { lat: number; lng: number } | null => {
+    const currentDayPlan = plan.daily_plans?.[dayIndex];
+    const step = currentDayPlan?.route?.[routeIndex];
+    if (step && step.coords && step.coords.length === 2) {
+      return { lat: step.coords[0], lng: step.coords[1] };
+    }
+    return null;
+  };
+  console.log(showDirectionsMode);
 
   return (
     <div className="space-y-8 p-6 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl shadow-lg">
@@ -73,6 +120,11 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
             <span className="font-semibold text-gray-800">Hotel:</span>{" "}
             {plan.hotel.name}
           </p>
+          {plan.hotel.description && (
+            <p className="text-sm text-gray-600 mt-1 italic">
+              {plan.hotel.description}
+            </p>
+          )}
           {/* Optionally display hotel coords if needed */}
           {/* <p className="text-xs text-gray-500">Coords: {plan.hotel.coords.join(', ')}</p> */}
         </div>
@@ -98,12 +150,11 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
           </svg>
           Daily Itinerary
         </h3>
-        {plan.daily_plans.map((dayPlan) => (
+        {plan.daily_plans.map((dayPlan, dayIndex) => (
           <div
             key={dayPlan.day}
             className="border border-blue-200 rounded-lg p-5 bg-white shadow-sm relative overflow-hidden"
-            // Add a subtle accent border
-            style={{ borderLeft: "5px solid #6366F1" /* indigo-500 */ }}
+            style={{ borderLeft: "5px solid #6366F1" }}
           >
             <h4 className="text-lg font-semibold text-indigo-700 mb-4">
               Day {dayPlan.day}
@@ -131,7 +182,6 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
                     const indexB = timeSlotOrder.indexOf(
                       timeSlotB as keyof PlannedStops
                     );
-                    // Handle cases where a timeSlot might not be in our defined order (shouldn't happen with current structure)
                     if (indexA === -1) return 1;
                     if (indexB === -1) return -1;
                     return indexA - indexB;
@@ -139,7 +189,6 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
 
                 return entries.map(([timeSlot, stops]) => (
                   <div key={timeSlot} className="pl-2">
-                    {/* Added background and rounded corners to group time slot stops */}
                     <div className="bg-indigo-50 p-3 rounded-md border border-indigo-100">
                       <p className="text-sm font-semibold capitalize text-indigo-600 mb-1.5">
                         {/* Icon Placeholder based on time */}
@@ -151,11 +200,102 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
                         {timeSlot}:
                       </p>
                       <ul className="list-disc list-inside pl-3 space-y-1">
-                        {stops.map((stop: string, i: number) => (
-                          <li key={i} className="text-sm text-gray-700">
-                            {stop}
-                          </li>
-                        ))}
+                        {stops.map((stop: string, stopIndexInList: number) => {
+                          // Find details (coords and index in route array)
+                          const stopDetails = findStopDetails(dayIndex, stop);
+                          const destCoords = stopDetails?.coords;
+
+                          const handleClick = () => {
+                            if (!stopDetails) {
+                              console.warn(
+                                `PlanDisplay: Clicked ${stop}, but no details found in route.`
+                              );
+                              return;
+                            }
+                            const currentCoords = stopDetails.coords;
+                            const currentRouteIndex = stopDetails.routeIndex;
+
+                            if (showDirectionsMode) {
+                              console.log(
+                                `PlanDisplay (DIR_MODE): Clicked ${stop} (Route Index: ${currentRouteIndex})`
+                              );
+                              if (currentRouteIndex > 0) {
+                                const originCoords = getCoordsFromRouteIndex(
+                                  dayIndex,
+                                  currentRouteIndex - 1
+                                );
+                                console.log(
+                                  `PlanDisplay (DIR_MODE): Previous stop coords found:`,
+                                  originCoords
+                                );
+                                if (originCoords) {
+                                  console.log(
+                                    `PlanDisplay (DIR_MODE): Dispatching setRouteRequest:`,
+                                    {
+                                      origin: originCoords,
+                                      destination: currentCoords,
+                                    }
+                                  );
+                                  dispatch(
+                                    setRouteRequest({
+                                      origin: originCoords,
+                                      destination: currentCoords,
+                                    })
+                                  );
+                                } else {
+                                  console.warn(
+                                    `PlanDisplay (DIR_MODE): Previous coords were null/invalid. Falling back to setSelectedLocation.`
+                                  );
+                                  dispatch(setSelectedLocation(currentCoords));
+                                }
+                              } else {
+                                console.log(
+                                  `PlanDisplay (DIR_MODE): This is the first stop (index 0). Dispatching setSelectedLocation.`
+                                );
+                                dispatch(setSelectedLocation(currentCoords));
+                              }
+                            } else {
+                              // Highlight mode
+                              console.log(
+                                `PlanDisplay (HIGHLIGHT_MODE): Clicked ${stop}, dispatching setSelectedLocation:`,
+                                currentCoords
+                              );
+                              dispatch(setSelectedLocation(currentCoords));
+                            }
+                          };
+
+                          return (
+                            <li
+                              key={`${dayPlan.day}-${timeSlot}-${stopIndexInList}`}
+                              className={`text-sm text-gray-700 ${
+                                destCoords
+                                  ? "cursor-pointer hover:text-indigo-600 hover:font-semibold"
+                                  : ""
+                              }`}
+                              onClick={destCoords ? handleClick : undefined}
+                              title={
+                                destCoords
+                                  ? `Click to view ${stop} on map`
+                                  : stop
+                              }
+                            >
+                              {stop}
+                              {/* Display stop description if available */}
+                              {stopDetails?.routeIndex !== undefined &&
+                                plan.daily_plans[dayIndex].route[
+                                  stopDetails.routeIndex
+                                ].description && (
+                                  <p className="text-xs text-gray-500 mt-0.5 italic pl-2">
+                                    {
+                                      plan.daily_plans[dayIndex].route[
+                                        stopDetails.routeIndex
+                                      ].description
+                                    }
+                                  </p>
+                                )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   </div>
@@ -183,3 +323,6 @@ const PlanDisplay = ({ plan }: PlanDisplayProps) => {
 };
 
 export default PlanDisplay;
+
+// Removed Export for types used in PlanDisplay
+// export type { StructuredPlan, DailyPlan, RouteStep, PlannedStops, Hotel };

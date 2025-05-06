@@ -44,6 +44,7 @@ interface ChatInterfaceProps {
   isLoggedIn: boolean;
   threadId: string;
   conversationId: string | null;
+  showDirectionsMode: boolean;
 }
 
 // --- Message Interface (Updated - FlightData is now imported) ---
@@ -152,6 +153,7 @@ const ChatInterface = ({
   isLoggedIn,
   threadId,
   conversationId,
+  showDirectionsMode,
 }: ChatInterfaceProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -487,6 +489,7 @@ const ChatInterface = ({
     input,
     contents,
     onShowMap,
+    showDirectionsMode,
   ]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -548,7 +551,10 @@ const ChatInterface = ({
                   ) : message.parsedFlights ? (
                     <FlightTable flights={message.parsedFlights} />
                   ) : message.parsedPlan ? (
-                    <PlanDisplay plan={message.parsedPlan} />
+                    <PlanDisplay
+                      plan={message.parsedPlan}
+                      showDirectionsMode={showDirectionsMode}
+                    />
                   ) : (
                     <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 prose-strong:font-semibold">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>

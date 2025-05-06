@@ -23,6 +23,7 @@ export default function Home() {
   const [highlightedThreadId, setHighlightedThreadId] = useState<string | null>(
     null
   );
+  const [showDirectionsMode, setShowDirectionsMode] = useState(false);
 
   const historyPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -160,6 +161,7 @@ export default function Home() {
                 isLoggedIn={loggedIn}
                 threadId={threadId}
                 conversationId={conversationId}
+                showDirectionsMode={showDirectionsMode}
               />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500">
@@ -180,7 +182,10 @@ export default function Home() {
               className="bg-white !overflow-y-auto"
               order={3}
             >
-              <MapVis />
+              <MapVis
+                showDirectionsMode={showDirectionsMode}
+                setShowDirectionsMode={setShowDirectionsMode}
+              />
             </Panel>
           </>
         )}
