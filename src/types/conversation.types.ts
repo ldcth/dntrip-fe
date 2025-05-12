@@ -12,7 +12,7 @@ export interface IContent {
   _id: string;
   conversationId: string;
   threadId: string;
-  content: string;
+  content: string | object;
   type: "Human" | "AI";
   intent: string;
   createdAt: string;
