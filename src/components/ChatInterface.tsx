@@ -4,13 +4,8 @@ import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
 import PlanDisplay, { StructuredPlan } from "./PlanDisplay";
 import FlightTable, { FlightData } from "./FlightTable";
-// Keep IConversation if used by other parts, remove if truly unused
-// import { IConversation } from "@/types/conversation.types";
 import { IContent } from "@/types/conversation.types";
 
-// --- Location Interface (Matching MapView's expectation for mock data) ---
-// Note: This might differ from the Location type returned by your actual API
-// Export this type so Home can import it
 export interface MockLocation {
   name: string;
   lat: number;
@@ -18,7 +13,6 @@ export interface MockLocation {
   description: string;
 }
 
-// --- Added: Interface for raw flight data from API (Kept here as it's used for mapping) ---
 interface RawFlightDataFromAPI {
   flight_id?: string;
   departure_time?: string;
@@ -28,28 +22,30 @@ interface RawFlightDataFromAPI {
   date?: string;
   departure_airport?: string;
   arrival_airport?: string;
-  // Add other potential fields if necessary
 }
 
-// --- Added: Interface for the new AI response object structure ---
 interface AiResponseType {
   message?: string;
   flights?: RawFlightDataFromAPI[];
-  plan_details?: StructuredPlan;
+  plan_details?: StructuredPlan | PlanAgentPayload;
   locations?: MockLocation[];
-  selected_flight_details?: RawFlightDataFromAPI; // For flight_selection_confirmed intent
-  confirmed_flight_details?: RawFlightDataFromAPI; // Added for retrieve_information intent
-  // Add other potential fields from the AI response if necessary
+  selected_flight_details?: RawFlightDataFromAPI;
+  confirmed_flight_details?: RawFlightDataFromAPI;
 }
 
-// --- Location Interface (Existing) ---
+interface PlanAgentPayload {
+  base_plan: StructuredPlan;
+  notes?: string[];
+  travel_duration_requested?: string;
+  user_specified_stops?: unknown[];
+}
+
 export interface Location {
   latitude: number;
   longitude: number;
   name?: string;
 }
 
-// --- ChatInterfaceProps Interface (Existing) ---
 interface ChatInterfaceProps {
   onShowMap: (locations: MockLocation[]) => void;
   isLoggedIn: boolean;
@@ -58,28 +54,22 @@ interface ChatInterfaceProps {
   showDirectionsMode: boolean;
 }
 
-// --- Message Interface (Updated - FlightData is now imported) ---
 interface Message {
   role: "user" | "assistant";
   content: string;
-  parsedFlights?: FlightData[] | null; // Uses imported FlightData
+  parsedFlights?: FlightData[] | null;
   parsedPlan?: StructuredPlan | null;
-  parsedSelectedFlight?: FlightData | null; // Added for single selected flight
+  parsedSelectedFlight?: FlightData | null;
 }
 
-// Helper function to map IContent to Message - ENHANCED
 const mapContentToMessage = (content: IContent): Message | null => {
   if (!content) return null;
 
-  // --- Human Message ---
   if (content.type === "Human") {
-    // LINTER FIX: Ensure content.content is a string for Human messages
     const humanContent =
       typeof content.content === "string" ? content.content : "";
     return { role: "user", content: humanContent };
-  }
-  // --- AI Message ---
-  else if (content.type === "AI") {
+  } else if (content.type === "AI") {
     const intent = content.intent?.toLowerCase() || "";
     const aiResponseObject = content.content as AiResponseType;
 
@@ -92,7 +82,6 @@ const mapContentToMessage = (content: IContent): Message | null => {
       })
     );
 
-    // Specific intent for a list of flights
     if (
       intent === "flights_found_awaiting_selection" &&
       Array.isArray(aiResponseObject?.flights)
@@ -124,9 +113,7 @@ const mapContentToMessage = (content: IContent): Message | null => {
         parsedFlights: mappedFlights,
         content: aiResponseObject.message || "",
       };
-    }
-    // Specific intent for a single selected flight (after user action)
-    else if (
+    } else if (
       intent === "flight_selection_confirmed" &&
       aiResponseObject?.selected_flight_details &&
       typeof aiResponseObject.selected_flight_details === "object"
@@ -152,9 +139,7 @@ const mapContentToMessage = (content: IContent): Message | null => {
         parsedSelectedFlight: mappedSelectedFlight,
         content: aiResponseObject.message || "",
       };
-    }
-    // General information retrieval intent (can contain confirmed flight or plan)
-    else if (intent === "retrieve_information") {
+    } else if (intent === "retrieve_information") {
       if (
         aiResponseObject?.confirmed_flight_details &&
         typeof aiResponseObject.confirmed_flight_details === "object"
@@ -177,12 +162,10 @@ const mapContentToMessage = (content: IContent): Message | null => {
         };
         return {
           role: "assistant",
-          parsedSelectedFlight: mappedConfirmedFlight, // Use existing field for single flight display
+          parsedSelectedFlight: mappedConfirmedFlight,
           content: aiResponseObject.message || "",
         };
-      }
-      // Check for a list of flights if no confirmed_flight_details
-      else if (Array.isArray(aiResponseObject?.flights)) {
+      } else if (Array.isArray(aiResponseObject?.flights)) {
         const mappedFlights: FlightData[] = aiResponseObject.flights
           .map((flight: RawFlightDataFromAPI): FlightData | null => {
             let cleanId = flight.flight_id || "N/A";
@@ -210,47 +193,50 @@ const mapContentToMessage = (content: IContent): Message | null => {
           parsedFlights: mappedFlights,
           content: aiResponseObject.message || "",
         };
-      }
-      // Check for Plan if no confirmed_flight_details or flights list found under retrieve_information
-      else if (
+      } else if (
         aiResponseObject?.plan_details &&
         typeof aiResponseObject.plan_details === "object" &&
         !Array.isArray(aiResponseObject.plan_details) &&
-        "hotel" in aiResponseObject.plan_details // Basic check for plan structure
+        "hotel" in aiResponseObject.plan_details &&
+        "daily_plans" in aiResponseObject.plan_details
       ) {
         return {
           role: "assistant",
           parsedPlan: aiResponseObject.plan_details as StructuredPlan,
           content: aiResponseObject.message || "",
         };
-      }
-      // Fallback if retrieve_information has no specific data but has a message
-      else if (typeof aiResponseObject?.message === "string") {
+      } else if (typeof aiResponseObject?.message === "string") {
         return { role: "assistant", content: aiResponseObject.message };
       }
-    }
-    // Check for Plan (more general check, could be standalone plan intent)
-    else if (
-      (intent.includes("plan") ||
-        (typeof aiResponseObject?.plan_details === "object" &&
-          aiResponseObject?.plan_details !== null &&
-          "hotel" in aiResponseObject.plan_details)) &&
-      typeof aiResponseObject?.plan_details === "object" &&
-      aiResponseObject?.plan_details !== null &&
-      !Array.isArray(aiResponseObject.plan_details)
+    } else if (
+      intent === "plan_agent" &&
+      aiResponseObject?.plan_details &&
+      typeof aiResponseObject.plan_details === "object" &&
+      "base_plan" in aiResponseObject.plan_details &&
+      typeof (aiResponseObject.plan_details as PlanAgentPayload).base_plan ===
+        "object"
+    ) {
+      const planPayload = aiResponseObject.plan_details as PlanAgentPayload;
+      return {
+        role: "assistant",
+        parsedPlan: planPayload.base_plan,
+        content: aiResponseObject.message || "",
+      };
+    } else if (
+      aiResponseObject?.plan_details &&
+      typeof aiResponseObject.plan_details === "object" &&
+      !Array.isArray(aiResponseObject.plan_details) &&
+      "hotel" in aiResponseObject.plan_details &&
+      "daily_plans" in aiResponseObject.plan_details
     ) {
       return {
         role: "assistant",
         parsedPlan: aiResponseObject.plan_details as StructuredPlan,
         content: aiResponseObject.message || "",
       };
-    }
-    // Fallback for standard Text AI message if no other structured data matched
-    else if (typeof aiResponseObject?.message === "string") {
+    } else if (typeof aiResponseObject?.message === "string") {
       return { role: "assistant", content: aiResponseObject.message };
-    }
-    // Handle cases where content might be object/array but not flight/plan/message
-    else {
+    } else {
       console.warn(
         "Mapping AI: Unhandled content structure for intent:",
         intent,
@@ -264,7 +250,6 @@ const mapContentToMessage = (content: IContent): Message | null => {
   return null;
 };
 
-// --- ChatInterface Component (Original Logic) ---
 const ChatInterface = ({
   onShowMap,
   isLoggedIn,
@@ -277,6 +262,7 @@ const ChatInterface = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [contents, setContents] = useState<IContent[]>([]);
+  const [thinkingDots, setThinkingDots] = useState(".");
   const streamingMessageRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -313,15 +299,11 @@ const ChatInterface = ({
             response.data
           );
 
-          // --- FIX IS HERE ---
-          // Check if response.data itself is the array
           const fetchedContents: IContent[] = Array.isArray(response.data)
-            ? response.data // Use response.data directly
-            : []; // Fallback to empty array if it's not an array
+            ? response.data
+            : [];
 
-          // This validation might now be slightly redundant but safe to keep
           if (!Array.isArray(response.data)) {
-            // Check the original response.data
             console.error(
               "ChatInterface: Expected an array of contents, but received:",
               response.data
@@ -329,12 +311,10 @@ const ChatInterface = ({
             setMessages([
               { role: "assistant", content: "Error: Invalid format." },
             ]);
-            setIsChatLoading(false); // Stop loading on format error
+            setIsChatLoading(false);
             return;
           }
-          // --- END FIX ---
 
-          // Mapping should work now if fetchedContents is populated correctly
           const mappedMessages = fetchedContents
             .map(mapContentToMessage)
             .filter((msg): msg is Message => msg !== null);
@@ -370,14 +350,29 @@ const ChatInterface = ({
     };
   }, [conversationId, isLoggedIn]);
 
-  // Original Effect to clear messages when threadId changes (keep this simple behavior for now)
   useEffect(() => {
-    setMessages([]); // Clear messages when threadId changes
-    setInput(""); // Clear input field as well
+    if (isLoading && messages[messages.length - 1]?.role === "user") {
+      const interval = setInterval(() => {
+        setThinkingDots((prevDots) => {
+          if (prevDots === "...") {
+            return ".";
+          }
+          return prevDots + ".";
+        });
+      }, 500);
+      return () => clearInterval(interval);
+    } else {
+      setThinkingDots(".");
+    }
+  }, [isLoading, messages]);
+
+  useEffect(() => {
+    setMessages([]);
+    setInput("");
     console.log(
       "ChatInterface: threadId changed, clearing messages (Original Behavior)."
     );
-  }, [threadId]); // Dependency array includes threadId
+  }, [threadId]);
 
   useEffect(() => {
     return () => {
@@ -387,14 +382,12 @@ const ChatInterface = ({
     };
   }, []);
 
-  // Original effect related to login status (keep)
   useEffect(() => {
     if (!isLoggedIn) {
       setContents([]);
     }
   }, [isLoggedIn]);
 
-  // --- Mock Location Data for Testing ---
   const mockLocations: MockLocation[] = [
     {
       name: "Mock Location A (NYC)",
@@ -416,18 +409,16 @@ const ChatInterface = ({
     },
   ];
 
-  // --- Functions to Trigger Map with Mock Data ---
   const showMockMap = () => {
     console.log("TEST: Showing map with MOCK data");
-    onShowMap(mockLocations); // Call the prop passed from parent
+    onShowMap(mockLocations);
   };
 
   const hideMap = () => {
     console.log("TEST: Hiding map");
-    onShowMap([]); // Call the prop with empty array to hide/clear
+    onShowMap([]);
   };
 
-  // --- Original handleSend Logic ---
   const handleSend = useCallback(async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading || isChatLoading) return;
@@ -461,27 +452,23 @@ const ChatInterface = ({
 
       const response = await apiCall({
         question: trimmedInput,
-        thread_id: threadId, // Send the frontend threadId
+        thread_id: threadId,
       });
 
-      // const actualConversationId = response.data?.conversationId || "";
-      // NEW: conversationId is at the top level of response.data
-      const actualConversationId = response.data?.thread_id || threadId || ""; // Assuming thread_id from response is the new conversationId or fallback
+      const actualConversationId = response.data?.thread_id || threadId || "";
 
       console.log(`ChatInterface: Sent threadId: "${threadId}"`);
       console.log(
         `ChatInterface: Received backend thread_id (used as convId): "${actualConversationId}"`
       );
 
-      // Update contents using the response data and ACTUAL conversationId
       setContents((prevContents) => [
         ...prevContents,
         {
-          _id: response.data?._id || Date.now().toString(), // Ensure _id is present
-          conversationId: actualConversationId, // Use ID from response
-          threadId: threadId, // Keep the frontend threadId
-          // NEW: Store the entire response.data.response object in content for AI messages
-          content: response.data.response as AiResponseType, // Cast to AiResponseType here as well
+          _id: response.data?._id || Date.now().toString(),
+          conversationId: actualConversationId,
+          threadId: threadId,
+          content: response.data.response as AiResponseType,
           type: "AI",
           intent: response.data.intent,
           createdAt: new Date().toISOString(),
@@ -498,7 +485,6 @@ const ChatInterface = ({
       let parsedSelectedFlightData: FlightData | null = null;
       let textResponseContent: string = "";
 
-      // Specific intent for a list of flights
       if (
         intent === "flights_found_awaiting_selection" &&
         Array.isArray(responseData?.flights)
@@ -524,9 +510,7 @@ const ChatInterface = ({
           .filter((flight) => flight.id !== "N/A");
         textResponseContent =
           responseData.message || "Okay, I found these flights:";
-      }
-      // Specific intent for a single selected flight (after user action)
-      else if (
+      } else if (
         intent === "flight_selection_confirmed" &&
         responseData?.selected_flight_details &&
         typeof responseData.selected_flight_details === "object"
@@ -550,9 +534,7 @@ const ChatInterface = ({
         textResponseContent =
           responseData.message ||
           "Here are the details for the selected flight:";
-      }
-      // General information retrieval intent
-      else if (intent === "retrieve_information") {
+      } else if (intent === "retrieve_information") {
         if (
           responseData?.confirmed_flight_details &&
           typeof responseData.confirmed_flight_details === "object"
@@ -576,9 +558,7 @@ const ChatInterface = ({
           textResponseContent =
             responseData.message ||
             "Okay, here is the confirmed flight detail I have for you.";
-        }
-        // Check for a list of flights if no confirmed_flight_details
-        else if (Array.isArray(responseData?.flights)) {
+        } else if (Array.isArray(responseData?.flights)) {
           parsedFlightsData = responseData.flights
             .map((flight: RawFlightDataFromAPI) => {
               let cleanId = flight.flight_id || "N/A";
@@ -601,23 +581,30 @@ const ChatInterface = ({
           textResponseContent =
             responseData.message ||
             "Okay, here are the flight options I found.";
-        }
-        // Check for plan if no confirmed flight details or flights list under retrieve_information
-        else if (
+        } else if (
+          responseData?.plan_details &&
+          typeof responseData.plan_details === "object" &&
+          "base_plan" in responseData.plan_details &&
+          typeof (responseData.plan_details as PlanAgentPayload).base_plan ===
+            "object"
+        ) {
+          parsedPlanData = (responseData.plan_details as PlanAgentPayload)
+            .base_plan as StructuredPlan;
+          textResponseContent =
+            responseData.message || "Here is the travel plan I retrieved:";
+        } else if (
           responseData?.plan_details &&
           typeof responseData.plan_details === "object" &&
           !Array.isArray(responseData.plan_details) &&
-          "hotel" in responseData.plan_details // Basic check for plan structure
+          "hotel" in responseData.plan_details &&
+          "daily_plans" in responseData.plan_details
         ) {
           parsedPlanData = responseData.plan_details as StructuredPlan;
           textResponseContent =
             responseData.message || "Here is the travel plan I generated:";
-        }
-        // Fallback if retrieve_information has no specific data but has a message
-        else if (typeof responseData?.message === "string") {
+        } else if (typeof responseData?.message === "string") {
           textResponseContent = responseData.message;
         } else {
-          // If retrieve_information has neither known structured data nor a message, consider it unexpected
           console.error(
             "Unexpected API response format for retrieve_information intent:",
             response.data
@@ -625,24 +612,29 @@ const ChatInterface = ({
           textResponseContent =
             "Sorry, I received an unexpected response structure.";
         }
-      }
-      // Check for Plan (more general check, could be standalone plan intent)
-      else if (
-        (intent.includes("plan") || // Covers general plan intents if not retrieve_information
-          (responseData.plan_details &&
-            "hotel" in responseData.plan_details &&
-            "daily_plans" in responseData.plan_details)) &&
-        typeof responseData === "object" &&
-        responseData !== null &&
-        !Array.isArray(responseData) &&
-        responseData.plan_details
+      } else if (
+        intent === "plan_agent" &&
+        responseData?.plan_details &&
+        typeof responseData.plan_details === "object" &&
+        "base_plan" in responseData.plan_details &&
+        typeof (responseData.plan_details as PlanAgentPayload).base_plan ===
+          "object"
+      ) {
+        const planPayload = responseData.plan_details as PlanAgentPayload;
+        parsedPlanData = planPayload.base_plan;
+        textResponseContent =
+          responseData.message || "Here is your generated travel plan:";
+      } else if (
+        responseData?.plan_details &&
+        typeof responseData.plan_details === "object" &&
+        !Array.isArray(responseData.plan_details) &&
+        "hotel" in responseData.plan_details &&
+        "daily_plans" in responseData.plan_details
       ) {
         parsedPlanData = responseData.plan_details as StructuredPlan;
         textResponseContent =
           responseData.message || "Here is the travel plan I generated:";
-      }
-      // Fallback for standard Text AI message
-      else if (typeof responseData?.message === "string") {
+      } else if (typeof responseData?.message === "string") {
         textResponseContent = responseData.message;
       } else {
         console.error("Unexpected API response format:", response.data);
@@ -653,16 +645,15 @@ const ChatInterface = ({
         ...newMessages,
         {
           role: "assistant" as const,
-          content: "", // This will be filled by streaming
+          content: "",
           parsedFlights: parsedFlightsData,
           parsedPlan: parsedPlanData,
-          parsedSelectedFlight: parsedSelectedFlightData, // Added for single selected flight
+          parsedSelectedFlight: parsedSelectedFlightData,
         },
       ];
       setMessages(finalMessages);
       setIsLoading(false);
 
-      // Original streaming logic
       let currentContent = "";
       const words = textResponseContent.split(/(\s+)/);
       let wordIndex = 0;
@@ -733,7 +724,6 @@ const ChatInterface = ({
     }
   };
 
-  // Original Render Logic
   return (
     <div className="flex flex-col h-full bg-white shadow-xl rounded-lg overflow-hidden">
       <div
@@ -785,7 +775,6 @@ const ChatInterface = ({
                   ) : message.parsedFlights ? (
                     <>
                       <FlightTable flights={message.parsedFlights} />
-                      {/* Display API message if content exists */}
                       {message.content && (
                         <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 pt-3 p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -802,7 +791,6 @@ const ChatInterface = ({
                         plan={message.parsedPlan}
                         showDirectionsMode={showDirectionsMode}
                       />
-                      {/* Display API message if content exists */}
                       {message.content && (
                         <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 pt-3 p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -816,7 +804,6 @@ const ChatInterface = ({
                   ) : message.parsedSelectedFlight ? (
                     <>
                       <FlightTable flights={[message.parsedSelectedFlight]} />
-                      {/* Display API message if content exists */}
                       {message.content && (
                         <div className="prose prose-sm max-w-none text-gray-800 prose-headings:font-semibold prose-a:text-blue-600 hover:prose-a:text-blue-800 pt-3 p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -842,7 +829,7 @@ const ChatInterface = ({
             {isLoading && messages[messages.length - 1]?.role === "user" && (
               <div className="flex justify-start">
                 <div className="max-w-[70%] rounded-xl px-4 py-3 bg-white text-gray-500 shadow-md">
-                  Thinking...
+                  Thinking{thinkingDots}
                 </div>
               </div>
             )}

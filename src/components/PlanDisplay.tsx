@@ -116,7 +116,35 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
           Accommodation
         </h3>
         <div className="pl-7">
-          <p className="text-md text-gray-700">
+          <p
+            className={`text-md text-gray-700 ${
+              plan.hotel.coords
+                ? "cursor-pointer hover:text-indigo-600 hover:font-semibold"
+                : ""
+            }`}
+            onClick={() => {
+              if (plan.hotel.coords && plan.hotel.coords.length === 2) {
+                const hotelCoords = {
+                  lat: plan.hotel.coords[0],
+                  lng: plan.hotel.coords[1],
+                };
+                console.log(
+                  "PlanDisplay: Clicked Hotel, dispatching setSelectedLocation:",
+                  hotelCoords
+                );
+                dispatch(setSelectedLocation(hotelCoords));
+              } else {
+                console.warn(
+                  "PlanDisplay: Hotel coordinates are invalid or missing."
+                );
+              }
+            }}
+            title={
+              plan.hotel.coords
+                ? `Click to view ${plan.hotel.name} on map`
+                : plan.hotel.name
+            }
+          >
             <span className="font-semibold text-gray-800">Hotel:</span>{" "}
             {plan.hotel.name}
           </p>
@@ -323,6 +351,3 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
 };
 
 export default PlanDisplay;
-
-// Removed Export for types used in PlanDisplay
-// export type { StructuredPlan, DailyPlan, RouteStep, PlannedStops, Hotel };
