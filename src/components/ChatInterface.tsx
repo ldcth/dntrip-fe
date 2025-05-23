@@ -2,43 +2,16 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
-import PlanDisplay, { StructuredPlan } from "./PlanDisplay";
+import PlanDisplay from "./PlanDisplay";
 import FlightTable, { FlightData } from "./FlightTable";
-import { IContent } from "@/types/conversation.types";
-
-export interface MockLocation {
-  name: string;
-  lat: number;
-  lng: number;
-  description: string;
-}
-
-interface RawFlightDataFromAPI {
-  flight_id?: string;
-  departure_time?: string;
-  arrival_time?: string;
-  flight_time?: string;
-  price?: string;
-  date?: string;
-  departure_airport?: string;
-  arrival_airport?: string;
-}
-
-interface AiResponseType {
-  message?: string;
-  flights?: RawFlightDataFromAPI[];
-  plan_details?: StructuredPlan | PlanAgentPayload;
-  locations?: MockLocation[];
-  selected_flight_details?: RawFlightDataFromAPI;
-  confirmed_flight_details?: RawFlightDataFromAPI;
-}
-
-interface PlanAgentPayload {
-  base_plan: StructuredPlan;
-  notes?: string[];
-  travel_duration_requested?: string;
-  user_specified_stops?: unknown[];
-}
+import {
+  IContent,
+  AiResponseType,
+  RawFlightDataFromAPI,
+  MockLocation,
+  StructuredPlan,
+  PlanAgentPayload,
+} from "@/types/conversation.types";
 
 export interface Location {
   latitude: number;
@@ -66,8 +39,7 @@ const mapContentToMessage = (content: IContent): Message | null => {
   if (!content) return null;
 
   if (content.type === "Human") {
-    const humanContent =
-      typeof content.content === "string" ? content.content : "";
+    const humanContent = content.content as string;
     return { role: "user", content: humanContent };
   } else if (content.type === "AI") {
     const intent = content.intent?.toLowerCase() || "";

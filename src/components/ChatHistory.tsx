@@ -5,63 +5,51 @@ import {
   PlusIcon,
   ArrowRightOnRectangleIcon,
   ExclamationCircleIcon,
+  PencilIcon,
+  CreditCardIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useRouter } from "next/router";
 import { IUser } from "@/types";
 import UserInformation from "./UserInformation";
-import { ModelApi } from "../api";
-import { IConversation, IContent } from "@/types/conversation.types";
+import {
+  IConversation,
+  IContent,
+  AiResponseType,
+} from "@/types/conversation.types";
+import { Dropdown } from "antd";
+import type { MenuProps } from "antd";
 
 interface ChatHistoryProps {
   isLoggedIn: boolean;
   isExpanded: boolean;
   onToggle: (isExpanded: boolean) => void;
   onNewChat: () => void;
-  onSelectConversation: (threadId: string, conversationId: string) => void;
+  onSelectConversation: (conversationId: string) => void;
   user?: IUser;
-  activeThreadId: string | null;
+  activeConversationId: string | null;
+  conversations: IConversation[];
+  isLoading: boolean;
+  error: string | null;
 }
 
 const ChatHistory: FC<ChatHistoryProps> = ({
-  user,
   isLoggedIn,
   isExpanded,
   onToggle,
   onNewChat,
   onSelectConversation,
-  activeThreadId,
+  activeConversationId,
+  conversations,
+  isLoading,
+  error,
 }) => {
   const router = useRouter();
-  const [conversations, setConversations] = useState<IConversation[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      setIsLoading(true);
-      setError(null);
-      ModelApi.getConversationUser()
-        .then((response) => {
-          const convData = Array.isArray(response.data) ? response.data : [];
-          const sortedConversations = convData.sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-          setConversations(sortedConversations);
-        })
-        .catch((err) => {
-          console.error("Failed to fetch conversations:", err);
-          setError("Failed to load chat history.");
-          setConversations([]);
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else {
-      setConversations([]);
-      setError(null);
-    }
-  }, [isLoggedIn]);
+    setMounted(true);
+  }, []);
 
   const handleToggle = () => {
     onToggle(!isExpanded);
@@ -71,15 +59,59 @@ const ChatHistory: FC<ChatHistoryProps> = ({
     router.push("/login");
   }, [router]);
 
+  const handleModifyName = (conversationId: string) => {
+    alert(`Modify Name clicked for conversation: ${conversationId}`);
+  };
+
+  const handleBilling = (conversationId: string) => {
+    alert(`Billing clicked for conversation: ${conversationId}`);
+  };
+
+  const handleDelete = (conversationId: string) => {
+    if (
+      window.confirm(
+        `Are you sure you want to delete conversation ${conversationId}?`
+      )
+    ) {
+      alert(`Delete confirmed for conversation: ${conversationId}`);
+    }
+  };
+
   const getConversationPreview = (conversation: IConversation): string => {
-    const firstUserMessage = conversation.contents?.find(
+    if (conversation.title) {
+      return conversation.title;
+    }
+
+    const firstHumanMessageContent = conversation.contents?.find(
       (c: IContent) => c.type === "Human"
     )?.content;
-    return (
-      firstUserMessage ||
-      conversation.threadId ||
-      `Conversation ${conversation._id}`
+
+    if (typeof firstHumanMessageContent === "string") {
+      return firstHumanMessageContent;
+    }
+
+    const firstAiMessage = conversation.contents?.find(
+      (c: IContent) => c.type === "AI"
     );
+
+    if (firstAiMessage) {
+      const aiContent = firstAiMessage.content; // This is AiResponseType | string
+      if (
+        typeof aiContent === "object" &&
+        aiContent !== null &&
+        "message" in aiContent
+      ) {
+        if (typeof (aiContent as AiResponseType).message === "string") {
+          return (aiContent as AiResponseType).message!;
+        }
+      }
+    }
+
+    if (conversation.threadId) {
+      return `Chat: ${conversation.threadId.substring(0, 8)}...`;
+    }
+
+    return `Conversation ${conversation._id.substring(0, 8)}...`;
   };
 
   const formatRelativeDate = (dateString: string): string => {
@@ -90,8 +122,8 @@ const ChatHistory: FC<ChatHistoryProps> = ({
     const diffHours = Math.floor(diffMinutes / 60);
     const diffDays = Math.floor(diffHours / 24);
     const diffWeeks = Math.floor(diffDays / 7);
-    const diffMonths = Math.floor(diffDays / 30); // Approximate
-    const diffYears = Math.floor(diffDays / 365); // Approximate
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
 
     if (diffYears > 0)
       return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
@@ -106,6 +138,32 @@ const ChatHistory: FC<ChatHistoryProps> = ({
       return `${diffMinutes} min${diffMinutes > 1 ? "s" : ""} ago`;
     return "Just now";
   };
+
+  if (!mounted) {
+    return (
+      <div
+        className={`flex flex-col h-full p-4 transition-all duration-300 ease-in-out ${
+          isExpanded ? "w-full" : "w-16"
+        }`}
+      >
+        {/* Placeholder for the header section to maintain layout consistency */}
+        <div
+          className={`flex ${
+            isExpanded ? "justify-between" : "justify-center"
+          } items-center mb-4 shrink-0`}
+        >
+          {isExpanded && (
+            <div className="h-6 w-32 bg-gray-200 rounded animate-pulse"></div>
+          )}
+          <div className="h-6 w-6 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        <div className="shrink-0 mb-4 w-full">
+          <div className="h-10 w-full bg-gray-200 rounded animate-pulse"></div>
+        </div>
+        {/* Minimal structure for the rest, or simply null if preferred */}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -163,50 +221,74 @@ const ChatHistory: FC<ChatHistoryProps> = ({
           ) : isLoggedIn && conversations.length > 0 ? (
             <div className="space-y-1">
               {conversations.map((conv) => {
-                console.log(
-                  `ChatHistory Render Check: Item ThreadID=${
-                    conv.threadId
-                  }, Active Prop=${activeThreadId}, IsSelected=${
-                    conv.threadId === activeThreadId
-                  }`
-                );
+                const preview = getConversationPreview(conv);
+                const menuItems: MenuProps["items"] = [
+                  {
+                    key: "modify-name",
+                    label: (
+                      <span className="flex items-center">
+                        <PencilIcon className="h-4 w-4 mr-2" /> Modify Name
+                      </span>
+                    ),
+                    onClick: () => handleModifyName(conv._id),
+                  },
+                  {
+                    key: "billing",
+                    label: (
+                      <span className="flex items-center">
+                        <CreditCardIcon className="h-4 w-4 mr-2" /> Billing
+                      </span>
+                    ),
+                    onClick: () => handleBilling(conv._id),
+                  },
+                  {
+                    key: "delete",
+                    label: (
+                      <span className="flex items-center text-red-600">
+                        <TrashIcon className="h-4 w-4 mr-2" /> Delete
+                      </span>
+                    ),
+                    onClick: () => handleDelete(conv._id),
+                  },
+                ];
+
                 return (
-                  <div
-                    key={conv.threadId || conv._id}
-                    onClick={() => {
-                      console.log(
-                        `--- CLICKED History Item: Thread=${conv.threadId}, ConvID=${conv._id} ---`
-                      );
-                      onSelectConversation(conv.threadId, conv._id);
-                    }}
-                    className={`p-2 rounded cursor-pointer group ${
-                      conv.threadId === activeThreadId
-                        ? "bg-blue-100"
-                        : "hover:bg-gray-100"
-                    }`}
-                    title={getConversationPreview(conv)}
+                  <Dropdown
+                    key={conv._id}
+                    menu={{ items: menuItems }}
+                    trigger={["contextMenu"]}
                   >
-                    <p
-                      className={`text-sm font-medium truncate ${
-                        conv.threadId === activeThreadId
-                          ? "text-blue-800"
-                          : "text-gray-800 group-hover:text-gray-900"
+                    <div
+                      onClick={() => {
+                        onSelectConversation(conv._id);
+                      }}
+                      className={`p-2 rounded cursor-pointer group ${
+                        conv._id === activeConversationId
+                          ? "bg-blue-100"
+                          : "hover:bg-gray-100"
                       }`}
+                      title={preview}
                     >
-                      {/* {getConversationPreview(conv)}
-                       */}
-                      {conv.title}
-                    </p>
-                    <p
-                      className={`text-xs ${
-                        conv.threadId === activeThreadId
-                          ? "text-blue-600"
-                          : "text-gray-500 group-hover:text-gray-600"
-                      }`}
-                    >
-                      {formatRelativeDate(conv.createdAt)}
-                    </p>
-                  </div>
+                      <p
+                        className={`text-sm font-medium truncate ${
+                          conv._id === activeConversationId
+                            ? "text-blue-800"
+                            : "text-gray-800 group-hover:text-gray-900"
+                        }`}
+                      >
+                        {preview}
+                      </p>
+                      <p
+                        className={`text-xs ${
+                          conv._id === activeConversationId
+                            ? "text-blue-600"
+                            : "text-gray-500 group-hover:text-gray-600"
+                        }`}
+                      >
+                        {formatRelativeDate(conv.createdAt)}
+                      </p>
+                    </div>
+                  </Dropdown>
                 );
               })}
             </div>
@@ -221,9 +303,8 @@ const ChatHistory: FC<ChatHistoryProps> = ({
       )}
 
       <div className="shrink-0 mt-auto w-full">
-        {isLoggedIn && user ? (
-          <UserInformation user={user} isExpanded={isExpanded} />
-        ) : isExpanded ? (
+        {isLoggedIn && <UserInformation />}
+        {!isLoggedIn && isExpanded && (
           <button
             onClick={handleSignIn}
             className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer focus:outline-none transition-colors duration-200 ease-in-out"
@@ -231,7 +312,7 @@ const ChatHistory: FC<ChatHistoryProps> = ({
             <ArrowRightOnRectangleIcon className="h-5 w-5" />
             Log In
           </button>
-        ) : null}
+        )}
       </div>
     </div>
   );

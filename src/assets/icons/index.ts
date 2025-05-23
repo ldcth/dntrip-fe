@@ -1,2 +1,10 @@
 export { default as DefaultAvatarIcon } from "./default-avatar-icon.jpg";
 export { default as LogoutIcon } from "./logout-icon.png";
+export { default as CurrencyIcon } from "./currency.jpg";
+export { default as CalendarIcon } from "./calendar.jpg";
+export { default as PowerIcon } from "./power.jpg";
+export { default as PhoneIcon } from "./phone.jpg";
+export { default as InternetIcon } from "./internet.jpg";
+export { default as TaxiIcon } from "./taxi.jpg";
+export { default as FlagIcon } from "./flags.jpg";
+export { default as HospitalIcon } from "./hospital.jpg";

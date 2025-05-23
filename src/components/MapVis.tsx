@@ -57,20 +57,23 @@ const buttonDisabledStyle = {
   opacity: 0.65,
 };
 
-interface MapVisProps {
+interface AppMapVisProps {
   showDirectionsMode: boolean;
   setShowDirectionsMode?: (value: boolean) => void;
+  threadId: string | null;
 }
 
 const defaultCenter = {
   lat: 16.0612266,
   lng: 108.2271015,
 };
+const defaultZoom = 15;
 
 const AppMapVis = ({
   showDirectionsMode,
   setShowDirectionsMode,
-}: MapVisProps) => {
+  threadId,
+}: AppMapVisProps) => {
   const mapInstance = useMap();
   const routesLibrary = useMapsLibrary("routes");
   const dispatch = useDispatch<AppDispatch>();
@@ -107,7 +110,9 @@ const AppMapVis = ({
       })
     );
     return () => {
-      directionsRenderer?.setMap(null);
+      if (directionsRenderer) {
+        directionsRenderer.setMap(null);
+      }
     };
   }, [routesLibrary, mapInstance]);
 
@@ -169,7 +174,6 @@ const AppMapVis = ({
             "MapVis: directionsService.route successful. Response:",
             response
           );
-          console.log("MapVis: Calling directionsRenderer.setDirections...");
           directionsRenderer.setDirections(response);
           setDirectionsResponse(response);
 
@@ -186,7 +190,6 @@ const AppMapVis = ({
           setDirectionsResponse(null);
         });
     } else if (directionsRenderer?.hasOwnProperty("directions")) {
-      // Destination is null - Clear Renderer and Response State
       console.log("Destination is null, clearing directions via effect...");
       if (directionsRenderer) {
         console.log(
@@ -206,20 +209,39 @@ const AppMapVis = ({
             routes: [],
           });
           console.log("Effect: Successfully called setDirections(null).");
-          // Clear response state ONLY AFTER successful renderer clear
           setDirectionsResponse(null);
         } catch (error) {
           console.error("Effect Error calling setDirections(null):", error);
-          // Still clear response state even if renderer clear fails
           setDirectionsResponse(null);
         }
       } else {
         console.log("Renderer not available in effect when trying to clear.");
-        // Clear response state if renderer isn't available
         setDirectionsResponse(null);
       }
     }
   }, [routeRequest, directionsService, directionsRenderer, mapInstance]);
+
+  useEffect(() => {
+    if (threadId) {
+      console.log(
+        "MapVis: New threadId detected, resetting map state.",
+        threadId
+      );
+      dispatch(clearMapState());
+
+      if (directionsRenderer) {
+        directionsRenderer.setDirections(null);
+      }
+      setDirectionsResponse(null);
+      setHighlightedMarker(null);
+
+      if (mapInstance) {
+        console.log("MapVis: Panning to default center for new chat.");
+        mapInstance.panTo(defaultCenter);
+        mapInstance.setZoom(defaultZoom);
+      }
+    }
+  }, [threadId, dispatch, mapInstance, directionsRenderer]);
 
   const handleClearPath = () => {
     console.log("MapVis: Clear Path button clicked");
@@ -258,7 +280,7 @@ const AppMapVis = ({
       <div style={mapContainerStyle}>
         <Map
           defaultCenter={defaultCenter}
-          defaultZoom={15}
+          defaultZoom={defaultZoom}
           mapId={"my-map-id-app"}
           disableDefaultUI={true}
           gestureHandling={"greedy"}
@@ -352,7 +374,17 @@ const AppMapVis = ({
   );
 };
 
-const MapVis = ({ showDirectionsMode, setShowDirectionsMode }: MapVisProps) => {
+interface MapVisProps {
+  showDirectionsMode: boolean;
+  setShowDirectionsMode?: (value: boolean) => void;
+  threadId: string | null;
+}
+
+const MapVis = ({
+  showDirectionsMode,
+  setShowDirectionsMode,
+  threadId,
+}: MapVisProps) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
@@ -369,6 +401,7 @@ const MapVis = ({ showDirectionsMode, setShowDirectionsMode }: MapVisProps) => {
       <AppMapVis
         showDirectionsMode={showDirectionsMode}
         setShowDirectionsMode={setShowDirectionsMode}
+        threadId={threadId}
       />
     </APIProvider>
   );

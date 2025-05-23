@@ -5,49 +5,17 @@ import {
   setRouteRequest,
 } from "@/redux/slices/map.reducer";
 import { AppDispatch } from "@/redux/store/store";
-
-// --- Plan Data Structures ---
-
-interface Hotel {
-  name: string;
-  coords: [number, number];
-  description?: string;
-}
-
-interface PlannedStops {
-  Morning?: string[];
-  Lunch?: string[];
-  Afternoon?: string[];
-  Dinner?: string[];
-  Evening?: string[];
-}
-
-interface RouteStep {
-  step: number;
-  time_slot: string;
-  type: "hotel" | "place" | "restaurant"; // Assuming these are the possible types
-  name: string;
-  coords: [number, number];
-  distance_from_previous_km: number;
-  description?: string;
-}
-
-interface DailyPlan {
-  day: number;
-  planned_stops: PlannedStops;
-  route: RouteStep[];
-}
-
-export interface StructuredPlan {
-  hotel: Hotel;
-  daily_plans: DailyPlan[];
-}
-
-// --- Plan Display Component ---
+import {
+  StructuredPlan,
+  // HotelLocation,
+  // DailyPlan,
+  // RouteStep,
+  PlannedStops,
+} from "@/types/conversation.types";
 
 interface PlanDisplayProps {
   plan: StructuredPlan;
-  showDirectionsMode: boolean; // Added prop
+  showDirectionsMode: boolean;
 }
 
 const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
@@ -57,7 +25,6 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
     return <p>No plan data available to display.</p>;
   }
 
-  // Helper to find coordinates AND index for a stop name on a specific day
   const findStopDetails = (
     dayIndex: number,
     stopName: string
@@ -79,7 +46,6 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
     return null;
   };
 
-  // Helper to get coords from a specific route index
   const getCoordsFromRouteIndex = (
     dayIndex: number,
     routeIndex: number
@@ -188,7 +154,7 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
               Day {dayPlan.day}
             </h4>
 
-            {/* Planned Stops (Improved View) */}
+            {/* Planned Stops  */}
             <div className="space-y-3">
               <h5 className="text-md font-medium text-gray-700 mb-2 border-b pb-1">
                 Planned Stops:
@@ -219,7 +185,6 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
                   <div key={timeSlot} className="pl-2">
                     <div className="bg-indigo-50 p-3 rounded-md border border-indigo-100">
                       <p className="text-sm font-semibold capitalize text-indigo-600 mb-1.5">
-                        {/* Icon Placeholder based on time */}
                         {timeSlot === "Morning" && "🌄 "}
                         {timeSlot === "Lunch" && "🍴 "}
                         {timeSlot === "Afternoon" && "☀️ "}
@@ -229,7 +194,6 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
                       </p>
                       <ul className="list-disc list-inside pl-3 space-y-1">
                         {stops.map((stop: string, stopIndexInList: number) => {
-                          // Find details (coords and index in route array)
                           const stopDetails = findStopDetails(dayIndex, stop);
                           const destCoords = stopDetails?.coords;
 
