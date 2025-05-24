@@ -44,7 +44,7 @@ const Page = () => {
 
   const handleSignIn = useCallback(() => {
     router.push("/login");
-  }, []);
+  }, [router]);
 
   return (
     <div className="bg-white relative z-0 flex h-screen w-full overflow-hidden items-center justify-center">

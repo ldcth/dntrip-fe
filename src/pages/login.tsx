@@ -42,7 +42,7 @@ const Page = () => {
 
   const handleSignUp = useCallback(() => {
     router.push("/signup");
-  }, []);
+  }, [router]);
 
   return (
     <div className="bg-white relative z-0 flex h-screen w-full overflow-hidden items-center justify-center">

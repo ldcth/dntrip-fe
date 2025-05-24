@@ -12,7 +12,7 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
     if (user?.role !== 2) {
       router.push("/");
     }
-  }, [user]);
+  }, [user, router]);
 
   if (user?.role === 2) {
     return <>{children}</>;

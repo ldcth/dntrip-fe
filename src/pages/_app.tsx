@@ -5,6 +5,7 @@ import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor, RootState } from "../redux/store/store";
 import { useEffect } from "react";
 import { setHeaderConfigAxios } from "@/api/axios";
+import { AntdRegistry } from "@ant-design/nextjs-registry";
 
 // Component to handle auth header logic after rehydration
 const AuthHeaderSetter = () => {
@@ -31,10 +32,10 @@ export default function App({ Component, pageProps }: AppProps) {
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         {() => (
-          <>
+          <AntdRegistry>
             <AuthHeaderSetter />
             <Component {...pageProps} />
-          </>
+          </AntdRegistry>
         )}
       </PersistGate>
     </Provider>
