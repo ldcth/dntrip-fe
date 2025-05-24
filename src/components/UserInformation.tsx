@@ -6,7 +6,9 @@ import { authSelector, logout } from "@/redux/reducers";
 import { Dropdown } from "antd";
 import { DropdownProps } from "antd";
 
-interface UserInforProps extends DropdownProps {}
+interface UserInforProps extends DropdownProps {
+  className?: string;
+}
 
 const UserInformation: FC<UserInforProps> = ({ className, ...props }) => {
   const { user } = useSelector(authSelector);

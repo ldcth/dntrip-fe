@@ -1,6 +1,6 @@
 export {
   default as mapSlice,
   setSelectedLocation,
-  clearSelectedLocation,
-  selectSelectedLocation,
+  selectCurrentSelectedLocation,
+  selectCurrentRouteRequest,
 } from "./map.reducer";

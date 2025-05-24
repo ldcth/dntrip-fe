@@ -25,11 +25,12 @@ const authSlice = createSlice({
       state.loggedIn = true;
       state.access_token = action.payload;
     },
-    logout: (state, action: PayloadAction) => {
+    logout: (state, action: PayloadAction<void>) => {
       setHeaderConfigAxios();
       state.loggedIn = false;
       state.user = undefined;
       state.access_token = undefined;
+      console.log(action);
     },
   },
 });

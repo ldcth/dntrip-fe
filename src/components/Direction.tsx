@@ -13,7 +13,7 @@ export default function Intro() {
 
   return (
     <div style={{ height: "100vh", width: "100%" }}>
-      <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}>
+      <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}>
         <Map
           center={position}
           zoom={9}
