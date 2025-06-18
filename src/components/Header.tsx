@@ -4,6 +4,8 @@ import { useRouter } from "next/router";
 import { useSelector, useDispatch } from "react-redux";
 import { authSelector, logout } from "@/redux/reducers";
 import useClickOutside from "@/hooks/useClickOutside";
+import { LogoIcon } from "@/assets/icons";
+import Image from "next/image";
 
 const mainDropdownMenuItems = [
   { id: "login", label: "Login", type: "button" as const },
@@ -118,11 +120,11 @@ export default function Header() {
       <div className="container mx-auto flex justify-between items-center">
         <div className="flex ">
           <Link href="/" className="flex items-center gap-2 cursor-pointer">
-            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold">
-              L
+            <div className="w-16 h-8 flex items-center justify-center text-white font-bold">
+              <Image src={LogoIcon} alt="Logo" />
             </div>
 
-            <span className="text-xl font-bold">Logo</span>
+            {/* <span className="text-xl font-bold">DNTRIP</span> */}
           </Link>
 
           <nav className="flex items-center space-x-6 ml-10">

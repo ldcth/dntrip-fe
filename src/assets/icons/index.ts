@@ -8,3 +8,4 @@ export { default as InternetIcon } from "./internet.jpg";
 export { default as TaxiIcon } from "./taxi.jpg";
 export { default as FlagIcon } from "./flags.jpg";
 export { default as HospitalIcon } from "./hospital.jpg";
+export { default as LogoIcon } from "./logo_dntrip.png";

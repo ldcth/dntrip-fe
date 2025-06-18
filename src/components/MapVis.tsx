@@ -11,6 +11,9 @@ import { AppDispatch } from "@/redux/store/store";
 import {
   selectCurrentSelectedLocation,
   selectCurrentRouteRequest,
+  selectPlanLocations,
+  selectSelectedPlanLocation,
+  setSelectedPlanLocation,
   clearMapState,
 } from "@/redux/slices/map.reducer";
 
@@ -80,6 +83,8 @@ const AppMapVis = ({
 
   const selectedLocation = useSelector(selectCurrentSelectedLocation);
   const routeRequest = useSelector(selectCurrentRouteRequest);
+  const planLocations = useSelector(selectPlanLocations);
+  const selectedPlanLocation = useSelector(selectSelectedPlanLocation);
 
   const [directionsService, setDirectionsService] = useState<
     google.maps.DirectionsService | undefined
@@ -257,6 +262,72 @@ const AppMapVis = ({
 
   const isRouteActive = !!routeRequest;
 
+  useEffect(() => {
+    if (
+      mapInstance &&
+      planLocations &&
+      planLocations.length > 0 &&
+      !isRouteActive &&
+      !highlightedMarker
+    ) {
+      console.log(
+        "MapVis: Fitting map bounds to plan locations:",
+        planLocations
+      );
+      const bounds = new google.maps.LatLngBounds();
+      planLocations.forEach((location) => {
+        bounds.extend({ lat: location.lat, lng: location.lng });
+      });
+      mapInstance.fitBounds(bounds);
+
+      // Ensure minimum zoom level
+      const listener = mapInstance.addListener("bounds_changed", () => {
+        if (mapInstance.getZoom() && mapInstance.getZoom()! > 16) {
+          mapInstance.setZoom(16);
+        }
+        google.maps.event.removeListener(listener);
+      });
+    }
+  }, [planLocations, mapInstance, isRouteActive, highlightedMarker]);
+
+  // Clear selected plan location when no plan locations exist
+  useEffect(() => {
+    if (
+      selectedPlanLocation &&
+      (!planLocations || planLocations.length === 0)
+    ) {
+      console.log("MapVis: No plan locations, clearing selected plan location");
+      dispatch(setSelectedPlanLocation(null));
+    }
+  }, [planLocations, selectedPlanLocation, dispatch]);
+
+  // Zoom into selected plan location
+  useEffect(() => {
+    if (mapInstance && selectedPlanLocation) {
+      console.log(
+        "MapVis: Zooming into selected plan location:",
+        selectedPlanLocation
+      );
+      console.log("MapVis: mapInstance available:", !!mapInstance);
+
+      const targetLocation = {
+        lat: selectedPlanLocation.lat,
+        lng: selectedPlanLocation.lng,
+      };
+
+      // Pan to the location smoothly first
+      mapInstance.panTo(targetLocation);
+
+      // Add a small delay to ensure pan completes before zoom
+      setTimeout(() => {
+        const currentZoom = mapInstance.getZoom() || 15;
+        const targetZoom = Math.max(currentZoom, 17); // Always zoom to at least level 17
+        console.log("MapVis: Setting zoom from", currentZoom, "to", targetZoom);
+        mapInstance.setZoom(targetZoom);
+      }, 300);
+    }
+  }, [selectedPlanLocation, mapInstance]);
+
   const handleToggleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const isChecked = e.target.checked;
     if (setShowDirectionsMode) {
@@ -299,6 +370,36 @@ const AppMapVis = ({
               />
             </>
           )}
+
+          {!isRouteActive &&
+            !highlightedMarker &&
+            planLocations &&
+            planLocations.length > 0 &&
+            planLocations.map((location, index) => (
+              <Marker
+                key={`plan-location-${index}`}
+                position={{ lat: location.lat, lng: location.lng }}
+                title={`${location.name} (Day ${location.day || "N/A"}) - ${
+                  location.type
+                }`}
+                icon={{
+                  url:
+                    location.type === "hotel"
+                      ? "https://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                      : location.type === "restaurant"
+                      ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                      : "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                }}
+                onClick={() => {
+                  console.log("MapVis: Plan marker clicked:", location);
+                  console.log(
+                    "MapVis: About to dispatch setSelectedPlanLocation"
+                  );
+                  dispatch(setSelectedPlanLocation(location));
+                  console.log("MapVis: Dispatched setSelectedPlanLocation");
+                }}
+              />
+            ))}
         </Map>
 
         <div
@@ -342,6 +443,172 @@ const AppMapVis = ({
                 </p>
               </div>
             )}
+
+          {!isRouteActive && !highlightedMarker && selectedPlanLocation && (
+            <div
+              style={{
+                padding: "12px",
+                background: "rgba(255, 255, 255, 0.95)",
+                border: "2px solid #1976d2",
+                borderRadius: "6px",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.15)",
+                color: "black",
+                fontSize: "0.9rem",
+                minWidth: "250px",
+                marginBottom: "10px",
+              }}
+            >
+              <h4 style={{ margin: "0 0 8px 0", color: "#1976d2" }}>
+                📍 {selectedPlanLocation.name}
+              </h4>
+              <div style={{ marginBottom: "8px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      backgroundColor:
+                        selectedPlanLocation.type === "hotel"
+                          ? "#4285f4"
+                          : selectedPlanLocation.type === "restaurant"
+                          ? "#34a853"
+                          : "#ea4335",
+                      borderRadius: "50%",
+                    }}
+                  ></div>
+                  <span
+                    style={{ textTransform: "capitalize", fontWeight: "500" }}
+                  >
+                    {selectedPlanLocation.type}
+                  </span>
+                </div>
+                {selectedPlanLocation.day && (
+                  <p
+                    style={{
+                      margin: "4px 0",
+                      color: "#666",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    📅 Day {selectedPlanLocation.day}
+                  </p>
+                )}
+              </div>
+              <div style={{ borderTop: "1px solid #eee", paddingTop: "8px" }}>
+                <button
+                  onClick={() => dispatch(setSelectedPlanLocation(null))}
+                  style={{
+                    background: "#f5f5f5",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    padding: "4px 8px",
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    color: "#666",
+                  }}
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isRouteActive &&
+            !highlightedMarker &&
+            !selectedPlanLocation &&
+            planLocations &&
+            planLocations.length > 0 && (
+              <div
+                style={{
+                  padding: "10px",
+                  background: "rgba(255, 255, 255, 0.9)",
+                  border: "1px solid #ccc",
+                  borderRadius: "4px",
+                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                  color: "black",
+                  fontSize: "0.9rem",
+                }}
+              >
+                <h4 style={{ margin: "0 0 8px 0" }}>
+                  Travel Plan Locations ({planLocations.length})
+                </h4>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        backgroundColor: "#4285f4",
+                        borderRadius: "50%",
+                      }}
+                    ></div>
+                    <span>Hotels</span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        backgroundColor: "#34a853",
+                        borderRadius: "50%",
+                      }}
+                    ></div>
+                    <span>Restaurants</span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        backgroundColor: "#ea4335",
+                        borderRadius: "50%",
+                      }}
+                    ></div>
+                    <span>Places</span>
+                  </div>
+                </div>
+                <p
+                  style={{
+                    margin: "8px 0 0 0",
+                    fontSize: "0.8rem",
+                    color: "#666",
+                  }}
+                >
+                  Click on places in the plan to highlight them on the map
+                </p>
+              </div>
+            )}
         </div>
       </div>
 
@@ -367,6 +634,24 @@ const AppMapVis = ({
             disabled={!selectedLocation && !routeRequest}
           >
             Clear Path
+          </button>
+        )}
+
+        {!showDirectionsMode && highlightedMarker && (
+          <button
+            onClick={() => {
+              setHighlightedMarker(null);
+              console.log("MapVis: Clearing highlighted marker");
+              console.log("MapVis: isRouteActive:", isRouteActive);
+              console.log("MapVis: highlightedMarker:", highlightedMarker);
+              console.log(
+                "MapVis: selectedPlanLocation:",
+                selectedPlanLocation
+              );
+            }}
+            style={buttonStyle}
+          >
+            Clear
           </button>
         )}
       </div>

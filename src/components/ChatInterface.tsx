@@ -649,6 +649,12 @@ const ChatInterface = ({
           scrollToBottom();
           if (responseData.locations && responseData.locations.length > 0) {
             onShowMap(responseData.locations as MockLocation[]);
+          } else if (parsedPlanData) {
+            // Show map when plan data is available
+            console.log("ChatInterface: Plan data detected, showing map");
+            onShowMap([
+              { name: "Plan", lat: 0, lng: 0, description: "Travel Plan" },
+            ]);
           }
           inputRef.current?.focus();
         }
@@ -815,7 +821,7 @@ const ChatInterface = ({
             onClick={showMockMap}
             className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs"
           >
-            Show Mock Map
+            Show Map
           </button>
           <button
             onClick={hideMap}

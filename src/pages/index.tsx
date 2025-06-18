@@ -9,10 +9,29 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen">
       <Header />
-      <main className="flex-grow flex items-center justify-center bg-gray-100">
-        {/* Content for the home page will go here */}
-        {/* <p className="text-gray-500 text-xl">Welcome to the application!</p> */}
-        <Layout className="layout">
+      <main
+        className="flex-grow flex items-center justify-center relative"
+        style={{
+          backgroundImage: "url('/tour-du-lich-da-nang-1.jpg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+        }}
+      >
+        {/* Dark overlay for better text readability */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundColor: "rgba(0, 0, 0, 0.4)",
+            zIndex: 1,
+          }}
+        />
+
+        {/* Content for the home page */}
+        <Layout
+          className="layout"
+          style={{ background: "transparent", position: "relative", zIndex: 2 }}
+        >
           <Head>
             <title>AI Trip Planner - Craft Unforgettable Itineraries</title>
             <meta
@@ -22,7 +41,7 @@ export default function Home() {
             <link rel="icon" href="/favicon.ico" />
           </Head>
 
-          <Content style={{ padding: "100px 50px" }}>
+          <Content style={{ padding: "100px 50px", background: "transparent" }}>
             <div
               className="site-layout-content"
               style={{
@@ -42,6 +61,8 @@ export default function Home() {
                     fontSize: "48px",
                     fontWeight: "bold",
                     marginBottom: "0",
+                    color: "white",
+                    textShadow: "2px 2px 4px rgba(0,0,0,0.7)",
                   }}
                 >
                   Craft Unforgettable
@@ -55,13 +76,22 @@ export default function Home() {
                     fontWeight: "bold",
                     color: "#FF6B57",
                     margin: "0",
+                    textShadow: "2px 2px 4px rgba(0,0,0,0.7)",
                   }}
                 >
                   Da Nang Trip
                 </Title>
 
                 <Paragraph
-                  style={{ fontSize: "18px", marginTop: "30px", color: "#666" }}
+                  style={{
+                    fontSize: "18px",
+                    marginTop: "30px",
+                    color: "white",
+                    textShadow: "1px 1px 2px rgba(0,0,0,0.7)",
+                    backgroundColor: "rgba(0, 0, 0, 0.3)",
+                    padding: "20px",
+                    borderRadius: "8px",
+                  }}
                 >
                   Discover the stunning beaches, vibrant culture, and
                   breathtaking landscapes of Da Nang. Let &quot;Da Nang
@@ -81,8 +111,9 @@ export default function Home() {
                         padding: "0 30px",
                         fontSize: "18px",
                         borderRadius: "8px",
-                        background: "#000",
-                        borderColor: "#000",
+                        background: "#FF6B57",
+                        borderColor: "#FF6B57",
+                        boxShadow: "0 4px 8px rgba(0,0,0,0.3)",
                       }}
                     >
                       Start Planning Your Adventure

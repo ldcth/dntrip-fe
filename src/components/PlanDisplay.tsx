@@ -3,6 +3,7 @@ import { useDispatch } from "react-redux";
 import {
   setSelectedLocation,
   setRouteRequest,
+  setPlanLocations,
 } from "@/redux/slices/map.reducer";
 import { AppDispatch } from "@/redux/store/store";
 import {
@@ -20,6 +21,55 @@ interface PlanDisplayProps {
 
 const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
   const dispatch = useDispatch<AppDispatch>();
+
+  // Extract all locations from the plan and dispatch to Redux
+  React.useEffect(() => {
+    if (!plan || !plan.daily_plans) {
+      dispatch(setPlanLocations([]));
+      return;
+    }
+
+    const planLocationsList: Array<{
+      lat: number;
+      lng: number;
+      name: string;
+      type: "hotel" | "place" | "restaurant";
+      day?: number;
+    }> = [];
+
+    // Add hotel location
+    if (plan.hotel && plan.hotel.coords && plan.hotel.coords.length === 2) {
+      planLocationsList.push({
+        lat: plan.hotel.coords[0],
+        lng: plan.hotel.coords[1],
+        name: plan.hotel.name,
+        type: "hotel",
+      });
+    }
+
+    // Add all route locations from daily plans
+    plan.daily_plans.forEach((dayPlan) => {
+      if (dayPlan.route) {
+        dayPlan.route.forEach((step) => {
+          if (step.coords && step.coords.length === 2) {
+            planLocationsList.push({
+              lat: step.coords[0],
+              lng: step.coords[1],
+              name: step.name,
+              type: step.type,
+              day: dayPlan.day,
+            });
+          }
+        });
+      }
+    });
+
+    console.log(
+      "PlanDisplay: Dispatching plan locations to Redux:",
+      planLocationsList
+    );
+    dispatch(setPlanLocations(planLocationsList));
+  }, [plan, dispatch]);
 
   if (!plan || !plan.daily_plans) {
     return <p>No plan data available to display.</p>;
@@ -90,15 +140,17 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
             }`}
             onClick={() => {
               if (plan.hotel.coords && plan.hotel.coords.length === 2) {
-                const hotelCoords = {
+                const hotelPlanLocation = {
                   lat: plan.hotel.coords[0],
                   lng: plan.hotel.coords[1],
+                  name: plan.hotel.name,
+                  type: "hotel" as const,
                 };
                 console.log(
-                  "PlanDisplay: Clicked Hotel, dispatching setSelectedLocation:",
-                  hotelCoords
+                  "PlanDisplay: Clicked Hotel, dispatching setSelectedPlanLocation:",
+                  hotelPlanLocation
                 );
-                dispatch(setSelectedLocation(hotelCoords));
+                dispatch(setSelectedLocation(hotelPlanLocation));
               } else {
                 console.warn(
                   "PlanDisplay: Hotel coordinates are invalid or missing."
@@ -247,9 +299,9 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
                                 dispatch(setSelectedLocation(currentCoords));
                               }
                             } else {
-                              // Highlight mode
+                              // Highlight mode - use plan location selection
                               console.log(
-                                `PlanDisplay (HIGHLIGHT_MODE): Clicked ${stop}, dispatching setSelectedLocation:`,
+                                `PlanDisplay (HIGHLIGHT_MODE): Clicked ${stop}, dispatching setSelectedPlanLocation:`,
                                 currentCoords
                               );
                               dispatch(setSelectedLocation(currentCoords));
