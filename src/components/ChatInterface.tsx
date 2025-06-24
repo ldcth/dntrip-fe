@@ -4,6 +4,8 @@ import remarkGfm from "remark-gfm";
 import { ModelApi } from "../api";
 import PlanDisplay from "./PlanDisplay";
 import FlightTable, { FlightData } from "./FlightTable";
+import ProgressIndicator from "./ProgressIndicator";
+import { useSimpleSSE } from "../hooks/useSimpleSSE";
 import {
   IContent,
   AiResponseType,
@@ -234,11 +236,28 @@ const ChatInterface = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [contents, setContents] = useState<IContent[]>([]);
-  const [thinkingDots, setThinkingDots] = useState(".");
   const streamingMessageRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // State for managing SSE connection timing
+  const [sseThreadId, setSSEThreadId] = useState<string | null>(null);
+
+  // SSE Progress Hook
+  const simpleProgress = useSimpleSSE(sseThreadId);
+
+  // Use simple SSE progress data
+  const actualProgress = {
+    message: simpleProgress.message,
+    phase: simpleProgress.phase,
+    isLoading: true,
+    tool_name: simpleProgress.tool_name,
+    timestamp: null,
+    isConnected: simpleProgress.isConnected,
+    error: simpleProgress.error,
+  };
+  const actualIsConnected = simpleProgress.isConnected;
 
   const scrollToBottom = (behavior: "smooth" | "auto" = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -323,22 +342,6 @@ const ChatInterface = ({
   }, [conversationId, isLoggedIn]);
 
   useEffect(() => {
-    if (isLoading && messages[messages.length - 1]?.role === "user") {
-      const interval = setInterval(() => {
-        setThinkingDots((prevDots) => {
-          if (prevDots === "...") {
-            return ".";
-          }
-          return prevDots + ".";
-        });
-      }, 500);
-      return () => clearInterval(interval);
-    } else {
-      setThinkingDots(".");
-    }
-  }, [isLoading, messages]);
-
-  useEffect(() => {
     setMessages([]);
     setInput("");
     console.log(
@@ -394,6 +397,12 @@ const ChatInterface = ({
   const handleSend = useCallback(async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading || isChatLoading) return;
+
+    console.log(
+      `[ChatInterface] Establishing SSE connection for thread: ${threadId}`
+    );
+    setSSEThreadId(threadId);
+
     const newMessages: Message[] = [
       ...messages,
       { role: "user" as const, content: trimmedInput },
@@ -683,6 +692,13 @@ const ChatInterface = ({
       });
       setIsLoading(false);
       inputRef.current?.focus();
+    } finally {
+      if (sseThreadId) {
+        console.log(
+          `[ChatInterface] Cleaning up SSE connection for thread: ${sseThreadId}`
+        );
+        setTimeout(() => setSSEThreadId(null), 1000);
+      }
     }
   }, [
     isLoggedIn,
@@ -693,6 +709,7 @@ const ChatInterface = ({
     contents,
     onShowMap,
     showDirectionsMode,
+    sseThreadId,
   ]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -806,8 +823,26 @@ const ChatInterface = ({
             ))}
             {isLoading && messages[messages.length - 1]?.role === "user" && (
               <div className="flex justify-start">
-                <div className="max-w-[70%] rounded-xl px-4 py-3 bg-white text-gray-500 shadow-md">
-                  Thinking{thinkingDots}
+                <div className="max-w-[85%]">
+                  {actualProgress.message ||
+                  actualProgress.error ||
+                  actualIsConnected ? (
+                    <ProgressIndicator
+                      progress={actualProgress}
+                      showTimestamp={false}
+                      className="mb-2"
+                      useRawMessages={false}
+                    />
+                  ) : (
+                    <div className="rounded-xl px-4 py-3 bg-white text-gray-500 shadow-md">
+                      {/* Thinking{thinkingDots} */}
+                    </div>
+                  )}
+                  {actualProgress.error && (
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                      Connection issue: {actualProgress.error}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -830,6 +865,22 @@ const ChatInterface = ({
             Hide Map
           </button>
         </div>
+        {/* Optional connection status indicator for debugging */}
+        {isLoading && (
+          <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+            <div
+              className={`w-2 h-2 rounded-full ${
+                actualIsConnected ? "bg-green-400" : "bg-red-400"
+              }`}
+            />
+            <span>
+              {actualIsConnected
+                ? "Connected to progress stream"
+                : "Connecting..."}
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-3 items-center">
           <input
             ref={inputRef}
@@ -848,7 +899,13 @@ const ChatInterface = ({
             className="bg-blue-500 text-white px-5 py-2 rounded-lg font-semibold hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out cursor-pointer"
             disabled={isLoading || isChatLoading || !input.trim()}
           >
-            {isLoading ? "Sending..." : isChatLoading ? "Loading..." : "Send"}
+            {isLoading
+              ? actualProgress.message
+                ? "Processing..."
+                : "Sending..."
+              : isChatLoading
+              ? "Loading..."
+              : "Send"}
           </button>
         </div>
       </div>

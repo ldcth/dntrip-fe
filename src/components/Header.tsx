@@ -116,11 +116,11 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-gray-800 text-white p-4 shadow-md">
+    <header className="bg-gray-800 text-white p-3 shadow-md">
       <div className="container mx-auto flex justify-between items-center">
         <div className="flex ">
           <Link href="/" className="flex items-center gap-2 cursor-pointer">
-            <div className="w-16 h-8 flex items-center justify-center text-white font-bold">
+            <div className="w-16 h-4 flex items-center justify-center text-white font-bold">
               <Image src={LogoIcon} alt="Logo" />
             </div>
 

@@ -107,7 +107,6 @@ const PlanDisplay = ({ plan, showDirectionsMode }: PlanDisplayProps) => {
     }
     return null;
   };
-  console.log(showDirectionsMode);
 
   return (
     <div className="space-y-8 p-6 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl shadow-lg">
